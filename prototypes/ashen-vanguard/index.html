@@ -17,6 +17,7 @@
 <canvas id="game"></canvas>
 <script src="config.js"></script>
 <script src="sprites.js"></script>
+<script src="fonts.js"></script>
 <script>
 'use strict';
 // 잿빛 선봉대: a portrait idle RPG. A knight walks a ruined road; companions join the column;
@@ -27,8 +28,8 @@ const params = new URLSearchParams(location.search);
 const tune = new Proxy({}, { get: (_, k) => CONFIG[k].value }); // live: tune.speed is CONFIG.speed.value
 const STEP = 1 / 60;            // simulation step in seconds; motion is per second, never per frame
 const W = 360, H = 640;         // logical size: a portrait phone screen
-const PIXEL = false;            // the canvas scales smoothly for crisp Korean text; sprites draw unsmoothed
-const FONT = '"Apple SD Gothic Neo","Malgun Gothic","Noto Sans KR","WenQuanYi Zen Hei",sans-serif';
+const PIXEL = true;             // dot look: the whole screen draws at 360x640 real pixels, then scales up unsmoothed
+const FONT = '"Galmuri11","Apple SD Gothic Neo","Malgun Gothic","WenQuanYi Zen Hei",sans-serif'; // Korean pixel font, 11px grid
 const TITLE = '잿빛 선봉대';
 const CONTROLS = ['화면 탭: 베기 (Space)', '아래 버튼: 강화·고용 (1~4)', '탭 전환: Q 파티 · W 장비 · E 환생', 'B 보스 도전 · P 일시정지 · M 소리'];
 const clock = window.GAME_CLOCK || { now: () => performance.now() / 1000 }; // a check may inject one
@@ -48,24 +49,52 @@ const ctx = canvas.getContext('2d');
 let viewScale = 1;
 function fit() { // fills the window at any size and pixel ratio
   const k = Math.min(innerWidth / W, innerHeight / H);
-  const s = PIXEL ? Math.max(1, Math.floor(k)) : k;
+  const s = k; // fills the phone; every logical pixel stays one hard-edged block
   const r = PIXEL ? 1 : s * (devicePixelRatio || 1);
   viewScale = s;
   canvas.width = Math.round(W * r); canvas.height = Math.round(H * r);
   canvas.style.width = Math.round(W * s) + 'px'; canvas.style.height = Math.round(H * s) + 'px';
   canvas.style.marginTop = Math.max(0, Math.floor((innerHeight - H * s) / 2)) + 'px';
+  canvas.style.imageRendering = 'pixelated';
   ctx.setTransform(r, 0, 0, r, 0, 0); ctx.imageSmoothingEnabled = false; // pixel sprites stay sharp
 }
+// Galmuri11 is drawn only at its native 11px and at 2x/4x, so every glyph lands on the pixel grid.
+if (window.PIXEL_FONTS && window.FontFace) {
+  const bin = b64 => Uint8Array.from(atob(b64), ch => ch.charCodeAt(0)).buffer;
+  [['Galmuri11', PIXEL_FONTS.Galmuri11, 'normal'], ['Galmuri11', PIXEL_FONTS.Galmuri11B, 'bold']].forEach(([fam, data, weight]) => {
+    try { const f = new FontFace(fam, bin(data), { weight }); f.load().then(ff => document.fonts.add(ff)); } catch (e) { /* falls back to system fonts */ }
+  });
+}
+function pxSize(size) { return size >= 36 ? 44 : size >= 18 ? 22 : 11; }
 addEventListener('resize', fit); fit();
 function clear(c) { ctx.fillStyle = c; ctx.fillRect(0, 0, W, H); }
-function text(s, x, y, size, c, align = 'center', weight = 'bold') {
-  ctx.fillStyle = c; ctx.font = `${weight} ${size}px ${FONT}`; ctx.textAlign = align;
-  ctx.textBaseline = 'middle'; ctx.fillText(s, x, y);
+function setFont(size, weight) {
+  const px = pxSize(size);
+  ctx.font = `${weight === 'normal' ? 'normal' : 'bold'} ${px}px ${FONT}`; ctx.textBaseline = 'middle';
+  return px;
 }
-function textOutlined(s, x, y, size, c, align = 'center') {
-  ctx.font = `bold ${size}px ${FONT}`; ctx.textAlign = align; ctx.textBaseline = 'middle';
-  ctx.lineWidth = 3; ctx.strokeStyle = '#0a0808'; ctx.lineJoin = 'round'; ctx.strokeText(s, x, y);
+function text(s, x, y, size, c, align = 'center', weight = 'bold') {
+  setFont(size, weight); ctx.textAlign = align; ctx.fillStyle = c;
+  ctx.fillText(s, Math.round(x), Math.round(y));
+}
+function textOutlined(s, x, y, size, c, align = 'center') { // a 1-pixel dark outline, drawn as eight offset copies
+  const px = setFont(size, 'bold'); ctx.textAlign = align; x = Math.round(x); y = Math.round(y);
+  const o = px >= 22 ? 2 : 1;
+  ctx.fillStyle = '#0a0808';
+  for (const [dx, dy] of [[-o, 0], [o, 0], [0, -o], [0, o], [-o, -o], [o, -o], [-o, o], [o, o]]) ctx.fillText(s, x + dx, y + dy);
   ctx.fillStyle = c; ctx.fillText(s, x, y);
+}
+function textWidth(s, size, weight = 'bold') { setFont(size, weight); return ctx.measureText(s).width; }
+// Pixel bitmaps: rows of characters, each a palette key ('.' is empty), drawn s pixels per dot.
+function bitmap(rows, x, y, pal, s = 1) {
+  x = Math.round(x); y = Math.round(y);
+  for (let j = 0; j < rows.length; j++) for (let i = 0; i < rows[j].length; i++) {
+    const c = pal[rows[j][i]]; if (c) { ctx.fillStyle = c; ctx.fillRect(x + i * s, y + j * s, s, s); }
+  }
+}
+function disc(cx, cy, r, c) { // a pixel circle, row by row
+  ctx.fillStyle = c;
+  for (let dy = -r; dy <= r; dy++) { const w = Math.floor(Math.sqrt(r * r - dy * dy)); ctx.fillRect(Math.round(cx - w), Math.round(cy + dy), w * 2 + 1, 1); }
 }
 function rect(x, y, w, h, c) { ctx.fillStyle = c; ctx.fillRect(Math.round(x), Math.round(y), Math.round(w), Math.round(h)); }
 
@@ -351,18 +380,22 @@ let hasSave = !!loadSave();
 function hash(i) { const x = Math.sin(i * 127.1 + 311.7) * 43758.5453; return x - Math.floor(x); }
 function drawBackground(scroll) {
   const top = HUD_H, gy = groundY();
-  const g = ctx.createLinearGradient(0, top, 0, gy);
-  g.addColorStop(0, PAL.sky0); g.addColorStop(0.75, PAL.sky1); g.addColorStop(1, PAL.glow);
-  ctx.fillStyle = g; ctx.fillRect(0, top, W, gy - top);
-  // pale moon behind haze
-  ctx.fillStyle = 'rgba(220,210,190,0.18)'; ctx.beginPath(); ctx.arc(70, top + 46, 20, 0, Math.PI * 2); ctx.fill();
-  ctx.fillStyle = 'rgba(220,210,190,0.08)'; ctx.beginPath(); ctx.arc(70, top + 46, 32, 0, Math.PI * 2); ctx.fill();
-  // far mountains
-  ctx.fillStyle = PAL.mount; ctx.beginPath(); ctx.moveTo(0, gy - 40);
-  for (let x = 0; x <= W + 40; x += 20) { const i = Math.floor((x + scroll * 0.08) / 20); ctx.lineTo(x - ((scroll * 0.08) % 20), gy - 70 - hash(i) * 70); }
-  ctx.lineTo(W, gy); ctx.lineTo(0, gy); ctx.fill();
+  // sky in stepped bands, no smooth gradient
+  const bands = ['#121319', '#16161e', '#1a1922', '#1f1c27', '#25202c', '#2b2431', '#352731', '#43292c', '#562c26'];
+  const bh = Math.ceil((gy - top) / bands.length);
+  bands.forEach((c, i) => rect(0, top + i * bh, W, bh, c));
+  // pale moon: a pixel disc with a stepped halo
+  disc(70, top + 46, 30, 'rgba(220,210,190,0.05)'); disc(70, top + 46, 24, 'rgba(220,210,190,0.07)');
+  disc(70, top + 46, 18, '#5d5a5e'); disc(66, top + 42, 13, '#6c6a6c'); rect(74, top + 50, 4, 3, '#545256'); rect(62, top + 40, 3, 2, '#5d5a5e');
+  // far mountains, column by column
+  const moff = Math.floor(scroll * 0.08);
+  for (let x = 0; x < W; x += 2) {
+    const u = (x + moff) / 20, i = Math.floor(u), f = u - i;
+    const h = 70 + (hash(i) * (1 - f) + hash(i + 1) * f) * 70;
+    rect(x, Math.round(gy - h), 2, Math.round(h), PAL.mount);
+  }
   // ruined towers
-  const off = scroll * 0.25;
+  const off = Math.floor(scroll * 0.25);
   for (let k = -1; k < 5; k++) {
     const i = Math.floor(off / 110) + k, x = i * 110 - off + 20 + hash(i + 9) * 40;
     const h = 60 + hash(i + 3) * 70, w = 26 + hash(i + 5) * 22;
@@ -372,21 +405,19 @@ function drawBackground(scroll) {
     rect(x, gy - 20 - h, 2, h + 20, PAL.ruinHi);
   }
   // dead trees
-  const toff = scroll * 0.55;
-  ctx.strokeStyle = PAL.tree; ctx.lineCap = 'square';
+  const toff = Math.floor(scroll * 0.55);
   for (let k = -1; k < 4; k++) {
     const i = Math.floor(toff / 140) + k, x = Math.round(i * 140 - toff + hash(i + 21) * 80);
-    ctx.lineWidth = 5; ctx.beginPath(); ctx.moveTo(x, gy - 4); ctx.lineTo(x + 2, gy - 70); ctx.stroke();
-    ctx.lineWidth = 3;
-    ctx.beginPath(); ctx.moveTo(x + 1, gy - 46); ctx.lineTo(x - 18, gy - 66); ctx.lineTo(x - 24, gy - 82); ctx.stroke();
-    ctx.beginPath(); ctx.moveTo(x + 2, gy - 58); ctx.lineTo(x + 20, gy - 80); ctx.stroke();
-    ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(x + 12, gy - 70); ctx.lineTo(x + 24, gy - 72); ctx.stroke();
+    rect(x - 2, gy - 70, 5, 66, PAL.tree); rect(x - 4, gy - 8, 9, 4, PAL.tree);
+    pixelLine(x, gy - 46, x - 18, gy - 64, 3, PAL.tree); pixelLine(x - 18, gy - 64, x - 24, gy - 82, 2, PAL.tree);
+    pixelLine(x + 1, gy - 58, x + 20, gy - 80, 3, PAL.tree); pixelLine(x + 12, gy - 70, x + 24, gy - 72, 2, PAL.tree);
   }
-  // fog band
-  ctx.fillStyle = PAL.fog; ctx.fillRect(0, gy - 34, W, 20); ctx.fillRect(0, gy - 20, W, 10);
+  // fog bands, dithered at the edges
+  rect(0, gy - 32, W, 16, PAL.fog); rect(0, gy - 20, W, 8, PAL.fog);
+  for (let x = (Math.floor(scroll * 0.3) % 4); x < W; x += 4) { rect(W - x, gy - 34, 2, 2, PAL.fog); rect(x, gy - 14, 2, 2, PAL.fog); }
   // road
   rect(0, gy - 6, W, FIELD_B - gy + 6, PAL.road);
-  const roff = scroll % 32;
+  const roff = Math.floor(scroll) % 32;
   for (let x = -32; x < W + 32; x += 32) {
     rect(x - roff, gy - 6, 30, 2, PAL.roadHi);
     rect(x - roff + 14, gy + 6, 2, 10, PAL.roadDark);
@@ -401,9 +432,8 @@ function drawTorchLight(t) {
   const f = 1 + Math.sin(t * 13) * 0.04 + Math.sin(t * 7.3) * 0.05;
   const r = (82 + Math.min(40, state.embers * 2)) * f;
   ctx.save(); ctx.globalCompositeOperation = 'lighter';
-  const g = ctx.createRadialGradient(x, y, 4, x, y, r);
-  g.addColorStop(0, 'rgba(255,150,60,0.30)'); g.addColorStop(0.5, 'rgba(255,110,40,0.10)'); g.addColorStop(1, 'rgba(255,100,40,0)');
-  ctx.fillStyle = g; ctx.fillRect(x - r, y - r, r * 2, r * 2);
+  // stepped rings of torchlight, the dot way
+  [[1, 0.03], [0.72, 0.035], [0.46, 0.045], [0.24, 0.06]].forEach(([k, a]) => disc(x, y, Math.round(r * k), `rgba(255,130,50,${a})`));
   ctx.restore();
 }
 function drawEmbersDrift(t) { // the road's ash: rising embers, more of them as embers are earned
@@ -416,44 +446,53 @@ function drawEmbersDrift(t) { // the road's ash: rising embers, more of them as 
   }
 }
 
-// ---- Drawn icons (no emoji) ---------------------------------------------------------------
-function coin(x, y, s = 1) {
-  rect(x - 4 * s, y - 5 * s, 8 * s, 10 * s, '#8a5a12'); rect(x - 5 * s, y - 4 * s, 10 * s, 8 * s, '#8a5a12');
-  rect(x - 3 * s, y - 4 * s, 6 * s, 8 * s, PAL.gold); rect(x - 4 * s, y - 3 * s, 8 * s, 6 * s, PAL.gold);
-  rect(x - 1 * s, y - 2 * s, 2 * s, 4 * s, '#fff2b0');
-}
-function flame(x, y, s = 1) {
-  ctx.fillStyle = PAL.ember; ctx.beginPath(); ctx.moveTo(x, y - 8 * s); ctx.lineTo(x + 5 * s, y + 1 * s);
-  ctx.lineTo(x + 3 * s, y + 6 * s); ctx.lineTo(x - 3 * s, y + 6 * s); ctx.lineTo(x - 5 * s, y + 1 * s); ctx.fill();
-  ctx.fillStyle = PAL.torchHi; ctx.beginPath(); ctx.moveTo(x, y - 2 * s); ctx.lineTo(x + 2.5 * s, y + 3 * s);
-  ctx.lineTo(x, y + 6 * s); ctx.lineTo(x - 2.5 * s, y + 3 * s); ctx.fill();
-}
-function swordIcon(x, y, c) {
-  ctx.save(); ctx.translate(x, y); ctx.rotate(-Math.PI / 4);
-  rect(-2, -12, 4, 16, c); rect(-1, -12, 1, 16, '#ffffff66'); rect(-6, 4, 12, 3, '#6b5a40'); rect(-1.5, 7, 3, 6, '#3c2f22');
-  ctx.restore();
-}
-function armorIcon(x, y, c) {
-  ctx.fillStyle = c; ctx.beginPath(); ctx.moveTo(x - 10, y - 9); ctx.lineTo(x - 4, y - 11); ctx.lineTo(x, y - 7);
-  ctx.lineTo(x + 4, y - 11); ctx.lineTo(x + 10, y - 9); ctx.lineTo(x + 8, y + 2); ctx.lineTo(x, y + 11); ctx.lineTo(x - 8, y + 2); ctx.fill();
-  rect(x - 1, y - 6, 2, 14, '#00000044');
-}
+// ---- Drawn icons (no emoji): pixel bitmaps ------------------------------------------------
+const BM = {
+  coin: ['..kkkkk..', '.kyyyyyk.', 'kywwyyyok', 'kywyyyyok', 'kyyyyyyok', 'kyyyyyyok', 'kyyyyyook', '.koooook.', '..kkkkk..'],
+  flame: ['...r....', '...rr...', '..rrr...', '..rorr..', '.rroorr.', '.rooyor.', 'rroyyorr', 'rooyyyor', 'rooywyor', '.rooyor.', '..rrrr..'],
+  sword: ['..........kk', '.........kwk', '........kwsk', '.......kwsk.', '......kwsk..', '.....kwsk...',
+          '.bb.kwsk....', '..bbwsk.....', '...bbk......', '..hkbb......', '.hh..b......', 'hh..........'],
+  armor: ['.kkk....kkk.', 'kcwck..kccck', 'kcwcckkcccck', 'kcccccccccck', '.kcwccccccck.', '.kcwcccccck',
+          '..kcwccccck', '..kccccccck', '...kccccck', '....kccck', '.....kck', '......k'],
+  speaker: ['....k', '...kk', 'kkkkk', 'kkkkk', 'kkkkk', 'kkkkk', '...kk', '....k'],
+  waves: ['..w.', '...w', 'w..w', '.w.w', '.w.w', 'w..w', '...w', '..w.'],
+  cross: ['x...x', '.x.x.', '..x..', '.x.x.', 'x...x'],
+};
+function coin(x, y, s = 1) { s = Math.max(1, Math.round(s)); bitmap(BM.coin, x - 4 * s, y - 4 * s, { k: '#4a2e08', y: PAL.gold, w: '#fff2b0', o: '#b97f1c' }, s); }
+function flame(x, y, s = 1) { s = Math.max(1, Math.round(s)); bitmap(BM.flame, x - 4 * s, y - 6 * s, { r: PAL.ember, o: PAL.torch, y: PAL.torchHi, w: '#fff6d8' }, s); }
+function swordIcon(x, y, c) { bitmap(BM.sword, x - 12, y - 12, { k: '#120f12', w: '#ffffff', s: c, b: '#9a7a44', h: '#5a3c22' }, 2); }
+function armorIcon(x, y, c) { bitmap(BM.armor, x - 12, y - 12, { k: '#120f12', c, w: '#ffffff99' }, 2); }
 function speaker(x, y, on) {
-  rect(x - 7, y - 3, 4, 6, PAL.ink);
-  ctx.fillStyle = PAL.ink; ctx.beginPath(); ctx.moveTo(x - 3, y - 3); ctx.lineTo(x + 2, y - 8); ctx.lineTo(x + 2, y + 8); ctx.lineTo(x - 3, y + 3); ctx.fill();
-  if (on) { rect(x + 5, y - 3, 2, 6, PAL.ink); rect(x + 8, y - 6, 2, 12, PAL.ink); }
-  else { ctx.strokeStyle = PAL.threat; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(x + 4, y - 5); ctx.lineTo(x + 11, y + 5); ctx.moveTo(x + 11, y - 5); ctx.lineTo(x + 4, y + 5); ctx.stroke(); }
+  bitmap(BM.speaker, x - 7, y - 8, { k: PAL.ink }, 2);
+  if (on) bitmap(BM.waves, x + 3, y - 8, { w: PAL.ink }, 2); else bitmap(BM.cross, x + 3, y - 5, { x: PAL.threat }, 2);
 }
+function pixelLine(x0, y0, x1, y1, w, c) { // a stepped line of w-by-w blocks
+  ctx.fillStyle = c; x0 = Math.round(x0); y0 = Math.round(y0); x1 = Math.round(x1); y1 = Math.round(y1);
+  const n = Math.max(Math.abs(x1 - x0), Math.abs(y1 - y0), 1);
+  for (let i = 0; i <= n; i++) ctx.fillRect(Math.round(x0 + (x1 - x0) * i / n), Math.round(y0 + (y1 - y0) * i / n), w, w);
+}
+// A pixel frame: a dark rim with cut corners, a coloured edge, a lit top and a shaded bottom.
 function panelBox(x, y, w, h, fill = PAL.panelHi, edge = PAL.line) {
-  rect(x, y, w, h, edge); rect(x + 2, y + 2, w - 4, h - 4, fill);
+  x = Math.round(x); y = Math.round(y); w = Math.round(w); h = Math.round(h);
+  rect(x + 1, y, w - 2, h, '#08070a'); rect(x, y + 1, w, h - 2, '#08070a');
+  rect(x + 1, y + 1, w - 2, h - 2, edge);
+  rect(x + 2, y + 2, w - 4, h - 4, fill);
+  rect(x + 2, y + 2, w - 4, 1, 'rgba(255,255,255,0.10)');
+  rect(x + 2, y + h - 3, w - 4, 1, 'rgba(0,0,0,0.35)');
 }
 function button(b, label, sub, enabled, hot) {
-  const fill = !enabled ? '#221f22' : hot ? '#8a3f16' : '#4a2a1a';
+  const fill = !enabled ? '#221f22' : hot ? '#9a4818' : '#4a2a1a';
   const edge = !enabled ? '#3a3438' : hot ? PAL.torch : '#7a4a2a';
-  panelBox(b.x, b.y, b.w, b.h, fill, edge);
-  if (enabled && hot) rect(b.x + 2, b.y + 2, b.w - 4, 3, '#ffb36655');
-  text(label, b.x + b.w / 2, b.y + (sub ? 14 : b.h / 2), 13, enabled ? PAL.ink : PAL.dim);
-  if (sub) { coin(b.x + b.w / 2 - ctx.measureText(sub).width / 2 - 6, b.y + 31, 1); text(sub, b.x + b.w / 2 + 6, b.y + 31, 13, enabled ? PAL.gold : PAL.dim); }
+  const x = Math.round(b.x), y = Math.round(b.y), w = Math.round(b.w), h = Math.round(b.h);
+  rect(x + 2, y + h - 3, w - 4, 3, '#000'); // the button's depth
+  panelBox(x, y, w, h - 2, fill, edge);
+  if (enabled && hot) { rect(x + 3, y + 3, w - 6, 2, '#ffc07a66'); rect(x + 3, y + 3, 2, h - 9, '#ffc07a33'); }
+  const lx = x + w / 2;
+  text(label, lx, y + (sub ? 13 : (h - 2) / 2), 13, enabled ? PAL.ink : PAL.dim);
+  if (sub) {
+    const tw = textWidth(sub, 13);
+    coin(lx - tw / 2 - 2, y + 29, 1); text(sub, lx + 6, y + 29, 13, enabled ? PAL.gold : PAL.dim);
+  }
 }
 
 // ---- Drawing the battle ------------------------------------------------------------------
@@ -503,8 +542,9 @@ function drawField() {
   // sparks and slashes
   for (const p of state.sparks) {
     if (p.slash) {
-      ctx.save(); ctx.globalAlpha = 1 - p.t / 0.2; ctx.strokeStyle = '#fff'; ctx.lineWidth = 3;
-      ctx.beginPath(); ctx.arc(p.x - 10, p.y + 10, 22, -1.2, 0.2); ctx.stroke(); ctx.restore();
+      ctx.save(); ctx.globalAlpha = 1 - p.t / 0.2; // a slash arc of 2px blocks
+      for (let a = -1.2; a <= 0.2; a += 0.09) { const k = (a + 1.2) / 1.4; rect(p.x - 10 + Math.cos(a) * 22, p.y + 10 + Math.sin(a) * 22, k < 0.3 || k > 0.8 ? 2 : 3, 2, '#fff'); }
+      ctx.restore();
     } else if (p.pillar) {
       ctx.save(); ctx.globalCompositeOperation = 'lighter'; ctx.globalAlpha = 1 - p.t / 0.45;
       rect(p.x - 10, HUD_H, 20, groundY() - HUD_H, '#ffe9a655'); rect(p.x - 4, HUD_H, 8, groundY() - HUD_H, '#fff6d0aa'); ctx.restore();
@@ -530,7 +570,7 @@ function drawField() {
 }
 function drawHud() {
   rect(0, 0, W, HUD_H, '#0d0c10'); rect(0, HUD_H - 2, W, 2, '#2a2530');
-  coin(16, 20, 1.3); text(fmt(state.gold), 30, 20, 16, PAL.gold, 'left');
+  coin(16, 20, 2); text(fmt(state.gold), 32, 21, 20, PAL.gold, 'left');
   const boss = state.enemy && state.enemy.boss;
   text(`스테이지 ${state.stage}`, 178, 14, 13, boss ? PAL.threat : PAL.ink);
   text(state.farming ? '파밍 중' : boss ? '보스전' : `${state.kills}/${tune.killsPerStage}`, 178, 29, 11, PAL.muted);
@@ -564,7 +604,7 @@ function drawPanel() {
     const on = state.tab === b.id.slice(4);
     rect(b.x, b.y, b.w, b.h, on ? '#2c2630' : '#121014'); rect(b.x, b.y, b.w, 2, on ? PAL.torch : '#2a2530');
     if (b.x > 0) rect(b.x, b.y, 1, b.h, '#2a2530');
-    text(b.label, b.x + b.w / 2, b.y + b.h / 2, 15, on ? PAL.ink : PAL.muted);
+    text(b.label, b.x + b.w / 2, b.y + b.h / 2 + 1, 20, on ? PAL.ink : PAL.muted);
     const dot = (b.id === 'tab:gear' && state.drop) || (b.id === 'tab:rebirth' && embersFor(state.maxStage) > 0);
     if (dot) { rect(b.x + b.w / 2 + 22, b.y + 10, 7, 7, PAL.threat); }
   });
@@ -745,9 +785,8 @@ const scenes = {
     draw() {
       const t = clock.now();
       clear('#07070a');
-      const g = ctx.createRadialGradient(W / 2, 330, 10, W / 2, 330, 220 + Math.sin(t * 9) * 6);
-      g.addColorStop(0, 'rgba(255,140,60,0.35)'); g.addColorStop(1, 'rgba(255,120,40,0)');
-      ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+      const gr = 200 + Math.round(Math.sin(t * 9) * 4); // stepped torch glow
+      [[1, 0.05], [0.75, 0.07], [0.5, 0.09], [0.28, 0.12]].forEach(([k, al]) => disc(W / 2, 330, Math.round(gr * k), `rgba(255,140,60,${al})`));
       rect(0, 360, W, 4, '#2a2420');
       drawSprite('knight', W / 2, 362, { scale: 1.5 });
       textOutlined(TITLE, W / 2, 120, 40, PAL.torchHi);

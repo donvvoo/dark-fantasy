@@ -86,3 +86,24 @@
   source: {vendor: "PixelLab", product: "PixelLab API", url: "https://api.pixellab.ai"}
   date: 2026-11-23
   ships: true
+- path: vendor/Galmuri11.woff2
+  origin: licensed
+  tool: "npm pack galmuri@2.40.3"
+  source: {vendor: "quiple", product: "Galmuri", url: "https://github.com/quiple/galmuri"}
+  licence: {id: OFL-1.1}
+  date: 2026-11-23
+  ships: true
+- path: vendor/Galmuri11-Bold.woff2
+  origin: licensed
+  tool: "npm pack galmuri@2.40.3"
+  source: {vendor: "quiple", product: "Galmuri", url: "https://github.com/quiple/galmuri"}
+  licence: {id: OFL-1.1}
+  date: 2026-11-23
+  ships: true
+- path: vendor/Galmuri-OFL.md
+  origin: licensed
+  tool: "npm pack galmuri@2.40.3"
+  source: {vendor: "quiple", product: "Galmuri", url: "https://github.com/quiple/galmuri"}
+  licence: {id: OFL-1.1}
+  date: 2026-11-23
+  ships: true

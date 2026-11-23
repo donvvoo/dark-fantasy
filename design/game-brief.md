@@ -14,6 +14,7 @@
 8. 범위: 시작부터 첫환생까지
 9. 픽셀: 픽셀은 2D 중년기사 김봉식 같은 느낌이였으면 좋겠어.
 10. 픽셀 레퍼런스: (2D_pixel_art_game_sprite.zip) 픽셀은 이런 느낌이면 좋겠어. 픽셀들만 고쳐주라. — 레퍼런스 프롬프트: "2D pixel art game sprite, 32-bit retro RPG style, a cute tiny chibi warrior adventurer character in 2-head-high SD proportions, standing at a slight diagonal three-quarter side profile view (facing right) … Thick black pixel outlines, visible low-resolution pixel texture, vibrant and flat retro color palette, no anti-aliasing. A small circular dark shadow beneath the feet …"
+After play: ui도 도트로 깔끔하게 변경해줄래?
 
 **Pitch:** 몰락한 왕국의 잿빛 길을 혼자 걷던 기사가 동료를 하나씩 모아, 켜 두기만 해도 강해지는 파티로 마왕의 성까지 밀고 나가는 세로형 다크 판타지 방치 RPG.
 
@@ -28,7 +29,7 @@
 **Intent:** payoff builds (from 슬레이어 키우기 / 김봉식 장르)
 
 ## Look and references
-- Look: 캐릭터는 레퍼런스 zip 스프라이트 느낌: 32x32, 2등신 SD 치비, 살짝 대각선 3/4 측면(영웅은 오른쪽, 적은 왼쪽), 두꺼운 검은 픽셀 외곽선, 선명하고 평평한 레트로 색, 안티앨리어싱 없음, 발밑 작은 원형 그림자. 2배 정수 확대. 배경과 UI는 어둡고 묵직한 다크 판타지. 저채도 회갈색·청회색 배경(무너진 성벽, 마른 나무, 안개), 선명한 색의 영웅·몬스터가 어두운 배경 위에 또렷이 뜨고, 위험(몬스터·보스)은 핏빛 적색 포인트, 보상·UI 강조는 횃불 주황빛. 그림자는 차갑게(남청), 빛은 따뜻하게. 한 가지 픽셀 밀도(캐릭터 32px 원본을 2배 정수 확대, 보스 64px, 스무딩 끔), 두꺼운 검은 외곽선, 평평한 음영. 시그니처: 선두 기사의 횃불이 길 위에 흔들리는 따뜻한 빛 웅덩이를 드리운다. 모든 캐릭터·몬스터는 PixelLab으로 생성한 스프라이트, 이모지·단색 원 금지. *(inferred (strong))*
+- Look: 캐릭터는 레퍼런스 zip 스프라이트 느낌: 32x32, 2등신 SD 치비, 살짝 대각선 3/4 측면(영웅은 오른쪽, 적은 왼쪽), 두꺼운 검은 픽셀 외곽선, 선명하고 평평한 레트로 색, 안티앨리어싱 없음, 발밑 작은 원형 그림자. 2배 정수 확대. UI도 도트: 화면 전체를 360x640 실제 픽셀로 그려 각진 픽셀로 확대, 한글 픽셀 폰트(Galmuri11), 픽셀 테두리·베벨 패널과 버튼, 픽셀 비트맵 아이콘, 계단식 하늘·횃불빛. 배경과 UI 색은 어둡고 묵직한 다크 판타지. 저채도 회갈색·청회색 배경(무너진 성벽, 마른 나무, 안개), 선명한 색의 영웅·몬스터가 어두운 배경 위에 또렷이 뜨고, 위험(몬스터·보스)은 핏빛 적색 포인트, 보상·UI 강조는 횃불 주황빛. 그림자는 차갑게(남청), 빛은 따뜻하게. 한 가지 픽셀 밀도(캐릭터 32px 원본을 2배 정수 확대, 보스 64px, 스무딩 끔), 두꺼운 검은 외곽선, 평평한 음영. 시그니처: 선두 기사의 횃불이 길 위에 흔들리는 따뜻한 빛 웅덩이를 드리운다. 모든 캐릭터·몬스터는 PixelLab으로 생성한 스프라이트, 이모지·단색 원 금지. *(inferred (strong))*
 - References: 슬레이어 키우기(세로 화면, 오른쪽으로 행군하며 자동 전투, 성장 탭 구조), 중년기사 김봉식(동료·강화가 쌓이는 방치 루프, 땅딸막한 2D 픽셀 비율) — 장르와 구조만 참고, 이름·그림·캐릭터·UI는 쓰지 않음.
 - View: 2D 사이드뷰 · Camera: 고정, 세로형(9:16) 화면 위쪽 55%가 전장, 아래쪽이 강화 패널.
 
