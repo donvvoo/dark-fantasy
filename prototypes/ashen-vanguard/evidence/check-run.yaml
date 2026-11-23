@@ -1,0 +1,159 @@
+# The one-shot's small check (check-run/1).
+# Written by one-shot-check.sh --record: the results are /prototype's reading of
+# evidence/self-check.tsv; never edited by hand.
+kind: check-run/1
+engine: web
+browser: "HeadlessChrome/153.0.0.0"
+time: "2026-11-23 14:09:57"
+checks:
+  - id: boots
+    result: pass
+    evidence:
+      - "evidence/self-check.tsv"
+  - id: shot
+    result: pass
+    evidence:
+      - "evidence/play.png"
+  - id: outlines
+    result: pass
+    evidence:
+      - "evidence/figures.png"
+  - id: brief-words
+    result: pass
+    evidence:
+      - "evidence/brief-words.tsv"
+  - id: emoji
+    result: pass
+    evidence:
+      - "evidence/self-check.tsv"
+  - id: nearest-game
+    result: pass
+    evidence:
+      - "evidence/nearest-game.txt"
+brief_checklist:
+  - id: L1
+    result: pass
+    evidence: "evidence/figures.png"
+    item: "Look: 캐릭터는 레퍼런스 zip 스프라이트 느낌: 32x32, 2등신 SD 치비, 살짝 대각선 3/4 측면(영웅은 오른쪽, 적은 왼쪽), 두꺼운 검은 픽셀 외곽선, 선명하고 평평한 레트로 색, 안티앨리어싱 없음, 발밑 작은 원형 그림자. 2배 정수 확대. 배경과 UI는 어둡고 묵직한 다크 판타지. 저채도 회갈색·청회색 배경(무너진 성벽, 마른 나무, 안개), 선명한 색의 영웅·몬스터가 어두운 배경 위에 또렷이 뜨고, 위험(몬스터·보스)은 핏빛 적색 포인트, 보상·UI 강조는 횃불 주황빛. 그림자는 차갑게(남청), 빛은 따뜻하게. 한 가지 픽셀 밀도(캐릭터 32px 원본을 2배 정수 확대, 보스 64px, 스무딩 끔), 두꺼운 검은 외곽선, 평평한 음영. 시그니처: 선두 기사의 횃불이 길 위에 흔들리는 따뜻한 빛 웅덩이를 드리운다. 모든 캐릭터·몬스터는 PixelLab으로 생성한 스프라이트, 이모지·단색 원 금지. *(inferred (strong))*"
+  - id: L2
+    result: pass
+    evidence: "evidence/play.png"
+    item: "References: 슬레이어 키우기(세로 화면, 오른쪽으로 행군하며 자동 전투, 성장 탭 구조), 중년기사 김봉식(동료·강화가 쌓이는 방치 루프, 땅딸막한 2D 픽셀 비율) — 장르와 구조만 참고, 이름·그림·캐릭터·UI는 쓰지 않음."
+  - id: L3
+    result: pass
+    evidence: "evidence/play.png"
+    item: "View: 2D 사이드뷰 · Camera: 고정, 세로형(9:16) 화면 위쪽 55%가 전장, 아래쪽이 강화 패널."
+  - id: F1
+    result: pass
+    evidence: "index.html:318"
+    item: "탭 공격 → 자동 공격 해금, 피해 숫자 팝업"
+  - id: F2
+    result: pass
+    evidence: "index.html:701"
+    item: "동료 4명 고용·강화 (기사, 궁수, 성직자, 화염술사), 각자 공격 방식 다름, 합류하면 대열에 보임"
+  - id: F3
+    result: pass
+    evidence: "evidence/play-2.png"
+    item: "강화 비용이 오를 때마다 가격·증가량 표시, 25/50/100레벨 마일스톤 배율 버스트"
+  - id: F4
+    result: pass
+    evidence: "index.html:139"
+    item: "스테이지 1~30, 10마다 보스(제한 시간), 실패 시 후퇴·재도전"
+  - id: F5
+    result: pass
+    evidence: "evidence/figures.png"
+    item: "적 4종 이상 + 보스 3종, 각자 실루엣·공격이 다름"
+  - id: F6
+    result: pass
+    evidence: "index.html:241"
+    item: "장비 드랍: 일반/희귀/영웅/전설 4등급, 무기·갑옷 슬롯, 간단한 비교 후 장착"
+  - id: F7
+    result: pass
+    evidence: "index.html:629"
+    item: "환생: 잿불 획득량 미리보기, 영구 전체 배율"
+  - id: F8
+    result: not_run
+    mark: not assessed
+    why: "away earnings computed from save time on continue and shown in a popup; needs a real gap between visits to see"
+    evidence: "index.html:337"
+    item: "오프라인 수익: 다시 켜면 비운 시간과 번 금화 표시"
+  - id: F9
+    result: pass
+    evidence: "index.html:328"
+    item: "세이브(브라우저 로컬 저장), 큰 숫자 축약(K, M, B, aa...)"
+  - id: S1
+    result: pass
+    evidence: "index.html:290"
+    item: "동료를 모아 파티로 성장 · in the slice"
+  - id: S2
+    result: pass
+    evidence: "index.html:318"
+    item: "초반 탭 → 자동 전투 · in the slice"
+  - id: S3
+    result: pass
+    evidence: "index.html:275"
+    item: "환생 영구배율 보너스 · in the slice"
+  - id: S4
+    result: pass
+    evidence: "index.html:241"
+    item: "등급 장비 드랍 · in the slice"
+  - id: S5
+    result: pass
+    evidence: "evidence/figures.png"
+    item: "PixelLab 캐릭터 · in the slice"
+  - id: M1
+    result: pass
+    evidence: "index.html:752"
+    item: "검은 화면에 횃불 하나가 켜지며 기사 한 명이 서 있다."
+  - id: M2
+    result: pass
+    evidence: "evidence/play.png"
+    item: "해골병 하나가 걸어오고 \"탭해서 베기\" 한 줄이 깜빡인다."
+  - id: M3
+    result: pass
+    evidence: "index.html:205"
+    item: "탭할 때마다 피해 숫자가 튀고, 3~4번 만에 쓰러지며 금화가 쏟아진다."
+  - id: M4
+    result: pass
+    evidence: "evidence/play.png"
+    item: "몇 마리를 탭으로 잡으면 금화가 \"기사 공격력 강화\"를 살 만큼 모이고, 버튼이 횃불빛으로 빛난다."
+  - id: M5
+    result: pass
+    evidence: "index.html:156"
+    item: "20초쯤 지나면 기사가 스스로 휘두르기 시작한다(자동 공격 해금)."
+  - id: M6
+    result: not_run
+    mark: not assessed
+    why: "archer costs 50 gold and joins behind the knight shooting arrows; whether it lands at 40-60 s needs play"
+    evidence: "index.html:701"
+    item: "40~60초에 첫 동료 \"궁수\"가 고용 가능해지고, 고용하는 순간 기사 뒤에 궁수가 합류해 대열이 길어지며 화살이 날아간다 — 처음으로 \"켜 두면 알아서 강해지는\" 순간."
+  - id: C1
+    result: pass
+    evidence: "index.html:222"
+    item: "1~9스테이지는 10마리 처치마다 다음으로 넘어가며 순조롭다."
+  - id: C2
+    result: pass
+    evidence: "index.html:232"
+    item: "10스테이지 보스(뼈의 기수)가 첫 벽: 30초 제한 안에 못 잡으면 9스테이지로 돌아가 자동 파밍하고, \"보스 재도전\" 버튼으로 다시 붙는다."
+  - id: C3
+    result: not_run
+    mark: not assessed
+    why: "boss hp x6/x7/x8 on hp growth 1.39; whether 20 and 30 truly need companions and gear needs play"
+    evidence: "config.js:12"
+    item: "이후 20스테이지(역병 사제), 30스테이지(잿불의 군주) 보스는 동료·장비 없이는 못 넘는다."
+  - id: C4
+    result: not_run
+    mark: not assessed
+    why: "rebirth opens at stage 20 (prestigeMinStage); whether growth slows near 30 needs play"
+    evidence: "index.html:168"
+    item: "30보스 근처에서 성장이 느려지면 환생이 열린다."
+  - id: C5
+    result: pass
+    evidence: "index.html:142"
+    item: "몬스터 체력은 스테이지마다 지수적으로 오른다."
+measures:
+  - id: step-time
+    value: 1.800
+    unit: ms
+    by: browser
+    detail: "mean 0.013 ms, slowest 1.800 ms, 274 steps"

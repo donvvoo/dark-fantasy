@@ -1,0 +1,28 @@
+L1	pass	evidence/figures.png	reference-style 32px 2-head chibi sprites, thick black outlines, flat colors, drawn 2x unsmoothed on the dark ruined road with torch light (index.html:398)
+L2	pass	evidence/play.png	portrait screen, party marching right into enemies, tabbed upgrade panel; structure only, own names and sprites
+L3	pass	evidence/play.png	2D side view, fixed camera, 360x640 portrait: field on top (~50%), panel and tabs below
+F1	pass	index.html:318	tap damage with popping numbers; knight auto-attack starts at Lv3 (index.html:156)
+F2	pass	index.html:701	knight melee lunge, archer arrows, cleric holy pillar + party aura, pyro fireball splash; hired heroes join the column at heroX
+F3	pass	evidence/play-2.png	price on each button, +dps gain on each row, milestone bar to Lv25/50/100 with x2 burst and toast (index.html:265)
+F4	pass	index.html:139	boss every 10 stages with 30 s timer; fail drops a stage into farming, B / 보스 도전 retries (index.html:232)
+F5	pass	evidence/figures.png	4 enemies and 3 bosses, each its own sprite; bosses lunge, bats fly
+F6	pass	index.html:241	4 rarities, weapon and armor slots, compare card with +/- percent, equip or discard (index.html:612)
+F7	pass	index.html:629	rebirth tab previews embers gained and new multiplier; embers multiply all damage and gold (index.html:145)
+F8	not_assessed	index.html:337	away earnings computed from save time on continue and shown in a popup; needs a real gap between visits to see
+F9	pass	index.html:328	localStorage save every 5 s and on hide (run log shows saved row); K/M/B/T then aa.. abbreviations (index.html:126)
+S1	pass	index.html:290	four companions hired and levelled from the party tab, shown marching in a column
+S2	pass	index.html:318	taps carry the first stages; knight auto-attack unlocks at Lv3, companions fight on their own clocks
+S3	pass	index.html:275	rebirth for embers, permanent x(1+0.25 each) on damage and gold
+S4	pass	index.html:241	gear drops in four rarities
+S5	pass	evidence/figures.png	all 11 characters are PixelLab sprites (assets/provenance.yaml)
+M1	pass	index.html:752	title: dark screen, torch glow, the knight standing
+M2	pass	evidence/play.png	an enemy walks in from the right; the tap hint blinks over the field (index.html:523)
+M3	pass	index.html:205	tap 3 vs stage-1 hp 8: a kill in 3 taps, damage numbers and gold coins pop
+M4	pass	evidence/play.png	knight upgrade (6 gold) glows torch-orange once affordable
+M5	pass	index.html:156	auto-attack starts at knight Lv3 (2 upgrades, about 20 s of tapping) rather than a timer
+M6	not_assessed	index.html:701	archer costs 50 gold and joins behind the knight shooting arrows; whether it lands at 40-60 s needs play
+C1	pass	index.html:222	10 kills clear a normal stage
+C2	pass	index.html:232	stage-10 boss is 뼈의 기수 with a 30 s timer; failing drops to stage 9 farming with a 보스 도전 button
+C3	not_assessed	config.js:12	boss hp x6/x7/x8 on hp growth 1.39; whether 20 and 30 truly need companions and gear needs play
+C4	not_assessed	index.html:168	rebirth opens at stage 20 (prestigeMinStage); whether growth slows near 30 needs play
+C5	pass	index.html:142	hp = 8 x 1.39^(stage-1)

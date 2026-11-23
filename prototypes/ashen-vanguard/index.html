@@ -1,0 +1,869 @@
+<!doctype html>
+<!-- PROTOTYPE - NOT FOR PRODUCTION -->
+<!-- Question: 탭에서 자동 전투로 넘어가고, 동료가 늘고, 환생해서 다시 더 빨리 오르는 흐름이 15~20분 동안 '한 번만 더 강화'를 부르는가? -->
+<!-- Date: 2026-11-23 -->
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>잿빛 선봉대 (Ashen Vanguard)</title>
+<style>
+  html, body { margin: 0; height: 100%; background: #07070a; overflow: hidden; touch-action: manipulation; }
+  body { font-variant-numeric: tabular-nums; -webkit-user-select: none; user-select: none; }
+  canvas { display: block; margin: 0 auto; }
+</style>
+</head>
+<body>
+<canvas id="game"></canvas>
+<script src="config.js"></script>
+<script src="sprites.js"></script>
+<script>
+'use strict';
+// 잿빛 선봉대: a portrait idle RPG. A knight walks a ruined road; companions join the column;
+// gold buys levels, bosses gate every 10 stages, rebirth trades the run for embers.
+
+// ---- Built to be checked ----------------------------------------------------------------
+const params = new URLSearchParams(location.search);
+const tune = new Proxy({}, { get: (_, k) => CONFIG[k].value }); // live: tune.speed is CONFIG.speed.value
+const STEP = 1 / 60;            // simulation step in seconds; motion is per second, never per frame
+const W = 360, H = 640;         // logical size: a portrait phone screen
+const PIXEL = false;            // the canvas scales smoothly for crisp Korean text; sprites draw unsmoothed
+const FONT = '"Apple SD Gothic Neo","Malgun Gothic","Noto Sans KR","WenQuanYi Zen Hei",sans-serif';
+const TITLE = '잿빛 선봉대';
+const CONTROLS = ['화면 탭: 베기 (Space)', '아래 버튼: 강화·고용 (1~4)', '탭 전환: Q 파티 · W 장비 · E 환생', 'B 보스 도전 · P 일시정지 · M 소리'];
+const clock = window.GAME_CLOCK || { now: () => performance.now() / 1000 }; // a check may inject one
+const CHEAP = params.get('render') === 'cheap';
+let seed;
+function rng() { // mulberry32; every gameplay random call reads this, never Math.random
+  seed = (seed + 0x6D2B79F5) | 0;
+  let t = Math.imul(seed ^ (seed >>> 15), seed | 1);
+  t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+  return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+}
+const events = []; // window.game.events: anything the game wants a run to see
+
+// ---- Screen ---------------------------------------------------------------------------
+const canvas = document.getElementById('game');
+const ctx = canvas.getContext('2d');
+let viewScale = 1;
+function fit() { // fills the window at any size and pixel ratio
+  const k = Math.min(innerWidth / W, innerHeight / H);
+  const s = PIXEL ? Math.max(1, Math.floor(k)) : k;
+  const r = PIXEL ? 1 : s * (devicePixelRatio || 1);
+  viewScale = s;
+  canvas.width = Math.round(W * r); canvas.height = Math.round(H * r);
+  canvas.style.width = Math.round(W * s) + 'px'; canvas.style.height = Math.round(H * s) + 'px';
+  canvas.style.marginTop = Math.max(0, Math.floor((innerHeight - H * s) / 2)) + 'px';
+  ctx.setTransform(r, 0, 0, r, 0, 0); ctx.imageSmoothingEnabled = false; // pixel sprites stay sharp
+}
+addEventListener('resize', fit); fit();
+function clear(c) { ctx.fillStyle = c; ctx.fillRect(0, 0, W, H); }
+function text(s, x, y, size, c, align = 'center', weight = 'bold') {
+  ctx.fillStyle = c; ctx.font = `${weight} ${size}px ${FONT}`; ctx.textAlign = align;
+  ctx.textBaseline = 'middle'; ctx.fillText(s, x, y);
+}
+function textOutlined(s, x, y, size, c, align = 'center') {
+  ctx.font = `bold ${size}px ${FONT}`; ctx.textAlign = align; ctx.textBaseline = 'middle';
+  ctx.lineWidth = 3; ctx.strokeStyle = '#0a0808'; ctx.lineJoin = 'round'; ctx.strokeText(s, x, y);
+  ctx.fillStyle = c; ctx.fillText(s, x, y);
+}
+function rect(x, y, w, h, c) { ctx.fillStyle = c; ctx.fillRect(Math.round(x), Math.round(y), Math.round(w), Math.round(h)); }
+
+// ---- Palette: dark ruins, bright figures, torch-orange rewards, blood-red threat -----------
+const PAL = {
+  sky0: '#14151d', sky1: '#2b2633', glow: '#5a2a22', mount: '#22232d', ruin: '#1b1c24', ruinHi: '#2c2d38',
+  tree: '#121216', fog: 'rgba(120,120,140,0.10)', road: '#3a332d', roadDark: '#2a2420', roadHi: '#4a4139',
+  panel: '#17151a', panelHi: '#24212a', line: '#3b3540', ink: '#ece3d6', muted: '#a59c90', dim: '#9a9086',
+  torch: '#ff9a3c', torchHi: '#ffd27a', gold: '#f2c14e', threat: '#d23a3a', ember: '#ff6a2a', holy: '#ffe9a6',
+  common: '#c9c4bb', rare: '#4fa3ff', epic: '#c06bff', legend: '#ffb02e',
+};
+
+// ---- Sprites (PixelLab, 32px heroes and enemies, 64px bosses, drawn at 2x) -----------------
+const SPR = {};
+const SPRITE_SCALE = 2;
+['knight', 'archer', 'cleric', 'pyro', 'skeleton', 'ghoul', 'bat', 'cultist', 'boss_rider', 'boss_priest', 'boss_lord']
+  .forEach(n => { const im = new Image(); im.src = (window.SPRITES && SPRITES[n]) || `assets/${n}.png`; SPR[n] = im; });
+function drawSprite(name, x, y, opts = {}) { // x: centre, y: feet
+  const im = SPR[name];
+  const sc = SPRITE_SCALE * (opts.scale || 1);
+  if (!im || !im.complete || !im.naturalWidth) return;
+  const w = im.naturalWidth * sc, h = im.naturalHeight * sc;
+  ctx.save();
+  if (opts.alpha !== undefined) ctx.globalAlpha = opts.alpha;
+  if (opts.flash) ctx.filter = 'brightness(2.6)';
+  ctx.translate(Math.round(x), Math.round(y));
+  if (opts.rot) ctx.rotate(opts.rot);
+  ctx.drawImage(im, -Math.round(w / 2), -h + Math.round(4 * sc), w, h); // sprites carry ~4px of floor under the shadow
+  ctx.restore();
+}
+
+// ---- Content: who fights, who is fought --------------------------------------------------
+const HEROES = [
+  { id: 'knight', name: '기사 에드릭', role: '근접 · 탭 피해', cost: 'knightCost', dps: 'knightDps', every: 'knightInterval' },
+  { id: 'archer', name: '궁수 리안', role: '연사', cost: 'archerCost', dps: 'archerDps', every: 'archerInterval' },
+  { id: 'cleric', name: '성직자 세라', role: '성광 · 아군 강화', cost: 'clericCost', dps: 'clericDps', every: 'clericInterval' },
+  { id: 'pyro', name: '화염술사 모르간', role: '화염구', cost: 'pyroCost', dps: 'pyroDps', every: 'pyroInterval' },
+];
+const ENEMIES = [
+  { id: 'skeleton', name: '해골 병사' }, { id: 'ghoul', name: '굶주린 구울' },
+  { id: 'bat', name: '핏빛 박쥐', fly: true }, { id: 'cultist', name: '잿불 광신도' },
+];
+const BOSSES = [
+  { id: 'boss_rider', name: '뼈의 기수' }, { id: 'boss_priest', name: '역병 사제' }, { id: 'boss_lord', name: '잿불의 군주' },
+];
+const RARITY = [
+  { name: '일반', color: PAL.common, k: 'gearCommon' }, { name: '희귀', color: PAL.rare, k: 'gearRare' },
+  { name: '영웅', color: PAL.epic, k: 'gearEpic' }, { name: '전설', color: PAL.legend, k: 'gearLegend' },
+];
+const GEAR_NAMES = {
+  weapon: ['녹슨 장검', '기사의 장검', '흑철 대검', '잿불 군주살해자'],
+  armor: ['누더기 사슬갑옷', '순례자의 흉갑', '흑철 판금', '잿불 성갑'],
+};
+const MILESTONES = [25, 50, 100, 200, 400];
+
+// ---- Numbers ------------------------------------------------------------------------------
+const UNITS = ['', 'K', 'M', 'B', 'T'];
+function fmt(n) {
+  if (!isFinite(n)) return '∞';
+  if (n < 1000) return n < 10 && n % 1 ? n.toFixed(1) : String(Math.floor(n));
+  let u = 0; while (n >= 1000 && u < 60) { n /= 1000; u++; }
+  const name = u < UNITS.length ? UNITS[u] : String.fromCharCode(97 + Math.floor((u - 5) / 26)) + String.fromCharCode(97 + (u - 5) % 26);
+  return (n < 10 ? n.toFixed(2) : n < 100 ? n.toFixed(1) : Math.floor(n)) + name;
+}
+function fmtTime(s) {
+  s = Math.floor(s); const h = Math.floor(s / 3600), m = Math.floor(s / 60) % 60, ss = s % 60;
+  return h ? `${h}시간 ${m}분` : m ? `${m}분 ${ss}초` : `${ss}초`;
+}
+
+// ---- Rules: pure functions of state -----------------------------------------------------
+function isBossStage(s) { return s % tune.bossEvery === 0; }
+function bossIndex(s) { return Math.floor(s / tune.bossEvery) - 1; }
+function enemyHp(s, boss) {
+  const base = tune.hpBase * Math.pow(tune.hpGrowth, s - 1);
+  return boss ? base * (tune.bossHpMult + tune.bossHpMultStep * bossIndex(s)) : base;
+}
+function emberMult() { return 1 + state.embers * tune.emberBonus; }
+function gearPct(slot) { return state.gear[slot] ? state.gear[slot].pct : 0; }
+function partyMult() {
+  const cl = state.lv.cleric;
+  return (1 + gearPct('weapon') / 100) * emberMult() * (1 + cl * tune.clericAura);
+}
+function milestoneMult(lv) { let m = 1; for (const t of MILESTONES) if (lv >= t) m *= tune.milestoneMult; return m; }
+function nextMilestone(lv) { for (const t of MILESTONES) if (lv < t) return t; return null; }
+function heroCost(h) { return Math.ceil(tune[h.cost] * Math.pow(tune.costGrowth, state.lv[h.id])); }
+function heroDps(h, lv = state.lv[h.id]) {
+  if (lv <= 0) return 0;
+  if (h.id === 'knight' && lv < tune.autoUnlockLevel) return 0;
+  return tune[h.dps] * lv * milestoneMult(lv) * partyMult();
+}
+function totalDps() { return HEROES.reduce((a, h) => a + heroDps(h), 0); }
+function tapDamage() {
+  const lv = state.lv.knight;
+  return (tune.tapBase + lv * tune.tapPerLevel) * milestoneMult(lv) * partyMult() + totalDps() * tune.tapDpsShare;
+}
+function killGold(s, boss) {
+  return Math.max(1, Math.ceil(enemyHp(s, false) * tune.goldRatio * (boss ? tune.bossGoldMult : 1)
+    * (1 + gearPct('armor') / 100) * emberMult()));
+}
+function embersFor(maxStage) {
+  if (maxStage < tune.prestigeMinStage) return 0;
+  return Math.floor(Math.pow(maxStage / tune.emberDiv, tune.emberPow));
+}
+
+// ---- Scenes ------------------------------------------------------------------------------
+let scene, state;
+const taps = []; // pointer taps in logical coords, handled on the next step
+function freshRun(keep) {
+  return {
+    t: 0, score: 0, gained: '',
+    gold: 0, stage: 1, kills: 0, maxStage: keep ? keep.maxStage : 1,
+    embers: keep ? keep.embers : 0, rebirths: keep ? keep.rebirths : 0,
+    lv: { knight: 1, archer: 0, cleric: 0, pyro: 0 },
+    gear: keep ? keep.gear : { weapon: null, armor: null }, drop: null,
+    farming: false, bossT: 0, enemy: null, march: 0, scroll: 0,
+    cd: { knight: 0, archer: 0.3, cleric: 0.6, pyro: 0.9 }, anim: { knight: 0, archer: 0, cleric: 0, pyro: 0 },
+    floats: [], shots: [], sparks: [], toast: null, tab: 'party', taps: 0, confirm: 0,
+    beatGoal: keep ? keep.beatGoal : false, playTime: keep ? keep.playTime : 0, saveT: 0, away: null,
+  };
+}
+function reset() {
+  seed = Number(params.get('seed')) || CONFIG.seed;
+  state = freshRun(null);
+  spawnEnemy(true);
+}
+function toast(msg, color = PAL.ink) { state.toast = { msg, color, t: 2.2 }; }
+function spawnEnemy(instant) {
+  const s = state.stage, boss = isBossStage(s) && !state.farming;
+  const kind = boss ? BOSSES[bossIndex(s) % BOSSES.length] : ENEMIES[Math.floor(rng() * ENEMIES.length)];
+  const hp = enemyHp(s, boss);
+  state.enemy = { kind, boss, hp, max: hp, x: instant ? 0 : 1, flash: 0, dead: 0, lunge: 0 };
+  if (boss) { state.bossT = tune.bossTime; toast(`보스 출현: ${kind.name}`, PAL.threat); tone(110, 0.5, 'sawtooth', 0.25); }
+}
+function damage(n, crit, color) {
+  const e = state.enemy; if (!e || e.dead || e.x > 0.05) return;
+  e.hp -= n; e.flash = 0.08;
+  state.floats.push({ txt: fmt(n), x: enemyX() + (rng() - 0.5) * 30, y: groundY() - (e.boss ? 110 : 62), t: 0, color, big: crit });
+  if (e.hp <= 0) killEnemy();
+}
+function killEnemy() {
+  const e = state.enemy; e.dead = 0.001;
+  const g = killGold(state.stage, e.boss);
+  state.gold += g; events.push({ type: 'kill', stage: state.stage, boss: e.boss });
+  for (let i = 0; i < 8; i++) state.sparks.push({ x: enemyX(), y: groundY() - 30, vx: (rng() - 0.3) * 90, vy: -60 - rng() * 90, t: 0, gold: true });
+  state.floats.push({ txt: `+${fmt(g)}`, x: enemyX(), y: groundY() - 90, t: 0, color: PAL.gold, coin: true });
+  tone(e.boss ? 220 : 520, 0.12, 'triangle', 0.2);
+  rollDrop(e.boss);
+  if (e.boss) {
+    toast(`${e.kind.name} 처치!`, PAL.torchHi); tone(330, 0.4, 'triangle', 0.3);
+    if (state.stage >= tune.goalStage && !state.beatGoal) { state.beatGoal = true; state.gained = `${e.kind.name}를 쓰러뜨렸다`; resultsPending = 1.2; }
+    advanceStage();
+  } else {
+    state.kills++;
+    if (state.kills >= tune.killsPerStage) {
+      if (state.farming) state.kills = 0; else advanceStage();
+    }
+  }
+  state.score = state.maxStage;
+}
+function advanceStage() {
+  state.stage++; state.kills = 0;
+  state.maxStage = Math.max(state.maxStage, state.stage); state.score = state.maxStage;
+}
+function failBoss() {
+  toast('보스에게 밀려났다… 파밍 후 재도전', PAL.threat); tone(90, 0.5, 'sawtooth', 0.25);
+  state.stage = Math.max(1, state.stage - 1); state.kills = 0; state.farming = true;
+  state.enemy = null; state.march = tune.marchTime;
+}
+function challengeBoss() {
+  if (!state.farming) return;
+  state.farming = false; state.stage++; state.kills = 0; state.enemy = null; state.march = tune.marchTime;
+}
+function rollDrop(boss) {
+  if (!boss && rng() >= tune.dropChance) return;
+  const roll = rng(); let r = 0;
+  if (roll < tune.legendChance) r = 3; else if (roll < tune.legendChance + tune.epicChance) r = 2;
+  else if (roll < tune.legendChance + tune.epicChance + tune.rareChance) r = 1;
+  if (boss) r = Math.max(r, 1);
+  const slot = rng() < 0.5 ? 'weapon' : 'armor';
+  const pct = Math.max(1, Math.round(state.stage * tune[RARITY[r].k] * (0.8 + 0.4 * rng())));
+  const item = { slot, r, pct, name: GEAR_NAMES[slot][r] };
+  if (!state.gear[slot]) { state.gear[slot] = item; toast(`${RARITY[r].name} ${item.name} 장착!`, RARITY[r].color); return; }
+  if (!state.drop || item.pct - gearPct(item.slot) > state.drop.pct - gearPct(state.drop.slot)) {
+    state.drop = item; toast(`${RARITY[r].name} 장비 획득 (장비 탭)`, RARITY[r].color);
+  }
+  tone(880, 0.15, 'square', 0.12);
+}
+function buyHero(i) {
+  const h = HEROES[i]; if (!h) return;
+  const c = heroCost(h);
+  if (state.gold < c) { tone(140, 0.08, 'square', 0.1); return; }
+  state.gold -= c; const before = state.lv[h.id]; state.lv[h.id]++;
+  events.push({ type: 'buy', hero: h.id, lv: state.lv[h.id] });
+  if (before === 0) { toast(`${h.name} 합류!`, PAL.torchHi); tone(392, 0.3, 'triangle', 0.25); }
+  else tone(660, 0.07, 'square', 0.12);
+  if (h.id === 'knight' && state.lv.knight === tune.autoUnlockLevel) toast('기사가 스스로 싸우기 시작한다', PAL.torchHi);
+  if (MILESTONES.includes(state.lv[h.id])) {
+    toast(`${h.name} Lv${state.lv[h.id]}: 피해 x${tune.milestoneMult}!`, PAL.torch);
+    for (let k = 0; k < 14; k++) state.sparks.push({ x: heroX(h.id), y: groundY() - 30, vx: (rng() - 0.5) * 160, vy: -80 - rng() * 120, t: 0 });
+    tone(523, 0.12, 'triangle', 0.2); tone(784, 0.25, 'triangle', 0.2);
+  }
+}
+function equipDrop() {
+  const d = state.drop; if (!d) return;
+  state.gear[d.slot] = d; state.drop = null; tone(700, 0.15, 'triangle', 0.2);
+}
+function rebirth() {
+  const gain = embersFor(state.maxStage); if (gain <= 0) return;
+  if (state.confirm <= 0) { state.confirm = 3; tone(300, 0.1); return; }
+  const keep = { maxStage: 1, embers: state.embers + gain, rebirths: state.rebirths + 1, gear: state.gear, beatGoal: state.beatGoal, playTime: state.playTime };
+  events.push({ type: 'rebirth', embers: keep.embers });
+  state = freshRun(keep); state.maxStage = 1;
+  spawnEnemy(true);
+  toast(`환생! 잿불 ${keep.embers}개 · 모든 피해·금화 x${fmt(emberMult())}`, PAL.ember);
+  tone(196, 0.6, 'triangle', 0.3); tone(392, 0.8, 'triangle', 0.2);
+}
+
+// ---- Layout --------------------------------------------------------------------------------
+const HUD_H = 40, FIELD_B = 330, PANEL_Y = 352, TAB_Y = 596;
+function groundY() { return 300; }
+function heroOrder() { return HEROES.filter(h => state.lv[h.id] > 0).map(h => h.id); }
+function heroX(id) { const i = heroOrder().indexOf(id); return 168 - i * 44; }
+function enemyX() { const e = state.enemy; const base = e && e.boss ? 278 : 272; return base + (e ? e.x * 120 : 0); }
+function buttons() {
+  const b = [];
+  b.push({ id: 'pause', x: W - 36, y: 6, w: 28, h: 28 });
+  b.push({ id: 'mute', x: W - 70, y: 6, w: 28, h: 28 });
+  if (state.farming) b.push({ id: 'boss', x: W - 112, y: HUD_H + 8, w: 104, h: 30 });
+  [['party', '파티'], ['gear', '장비'], ['rebirth', '환생']].forEach(([id, label], i) =>
+    b.push({ id: 'tab:' + id, label, x: i * (W / 3), y: TAB_Y, w: W / 3, h: H - TAB_Y }));
+  if (state.tab === 'party') HEROES.forEach((h, i) => b.push({ id: 'buy:' + i, x: W - 120, y: PANEL_Y + 6 + i * 60 + 8, w: 112, h: 44 }));
+  if (state.tab === 'gear' && state.drop) {
+    b.push({ id: 'equip', x: 24, y: PANEL_Y + 194, w: 150, h: 38 });
+    b.push({ id: 'discard', x: W - 174, y: PANEL_Y + 194, w: 150, h: 38 });
+  }
+  if (state.tab === 'rebirth') b.push({ id: 'rebirth', x: 40, y: PANEL_Y + 176, w: W - 80, h: 48 });
+  return b;
+}
+function hitButton(x, y) { return buttons().find(b => x >= b.x && x <= b.x + b.w && y >= b.y && y <= b.y + b.h); }
+function press(id) {
+  if (id === 'pause') { scene = 'pause'; return; }
+  if (id === 'mute') { setMuted(!muted); return; }
+  if (id === 'boss') { challengeBoss(); return; }
+  if (id.startsWith('tab:')) { state.tab = id.slice(4); tone(400, 0.04, 'square', 0.08); return; }
+  if (id.startsWith('buy:')) { buyHero(Number(id.slice(4))); return; }
+  if (id === 'equip') { equipDrop(); return; }
+  if (id === 'discard') { state.drop = null; return; }
+  if (id === 'rebirth') { rebirth(); }
+}
+function tapAttack(x, y) {
+  state.taps++;
+  const dmg = tapDamage(); const crit = rng() < 0.08;
+  damage(crit ? dmg * 3 : dmg, crit, crit ? PAL.torchHi : PAL.ink);
+  state.anim.knight = 0.18; tone(crit ? 980 : 760 + rng() * 80, 0.05, 'square', 0.12);
+  state.sparks.push({ x: x !== undefined ? x : enemyX(), y: y !== undefined ? y : groundY() - 30, vx: 0, vy: 0, t: 0, slash: true });
+}
+
+// ---- Saving and away earnings --------------------------------------------------------------
+const SAVE_KEY = 'ashen-vanguard-save-v1';
+function save() {
+  try {
+    const s = { ...state, floats: [], shots: [], sparks: [], toast: null, enemy: null, away: null, savedAt: Date.now() };
+    localStorage.setItem(SAVE_KEY, JSON.stringify(s));
+  } catch (e) { /* private mode: play on without saving */ }
+}
+function loadSave() {
+  try { const raw = localStorage.getItem(SAVE_KEY); return raw ? JSON.parse(raw) : null; } catch (e) { return null; }
+}
+function continueSave(s) {
+  seed = Number(params.get('seed')) || CONFIG.seed;
+  state = Object.assign(freshRun(null), s, { floats: [], shots: [], sparks: [], toast: null, enemy: null, away: null });
+  spawnEnemy(true);
+  const gone = Math.min((Date.now() - (s.savedAt || Date.now())) / 1000, tune.offlineCapHours * 3600);
+  if (gone > 60) {
+    const rate = totalDps() / Math.max(1, enemyHp(state.stage, false)) * killGold(state.stage, false) * tune.offlineRate;
+    const g = Math.floor(rate * gone);
+    if (g > 0) state.away = { secs: gone, gold: g };
+  }
+}
+let hasSave = !!loadSave();
+
+// ---- Background: the ruined road (deterministic, not gameplay rng) -------------------------
+function hash(i) { const x = Math.sin(i * 127.1 + 311.7) * 43758.5453; return x - Math.floor(x); }
+function drawBackground(scroll) {
+  const top = HUD_H, gy = groundY();
+  const g = ctx.createLinearGradient(0, top, 0, gy);
+  g.addColorStop(0, PAL.sky0); g.addColorStop(0.75, PAL.sky1); g.addColorStop(1, PAL.glow);
+  ctx.fillStyle = g; ctx.fillRect(0, top, W, gy - top);
+  // pale moon behind haze
+  ctx.fillStyle = 'rgba(220,210,190,0.18)'; ctx.beginPath(); ctx.arc(70, top + 46, 20, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = 'rgba(220,210,190,0.08)'; ctx.beginPath(); ctx.arc(70, top + 46, 32, 0, Math.PI * 2); ctx.fill();
+  // far mountains
+  ctx.fillStyle = PAL.mount; ctx.beginPath(); ctx.moveTo(0, gy - 40);
+  for (let x = 0; x <= W + 40; x += 20) { const i = Math.floor((x + scroll * 0.08) / 20); ctx.lineTo(x - ((scroll * 0.08) % 20), gy - 70 - hash(i) * 70); }
+  ctx.lineTo(W, gy); ctx.lineTo(0, gy); ctx.fill();
+  // ruined towers
+  const off = scroll * 0.25;
+  for (let k = -1; k < 5; k++) {
+    const i = Math.floor(off / 110) + k, x = i * 110 - off + 20 + hash(i + 9) * 40;
+    const h = 60 + hash(i + 3) * 70, w = 26 + hash(i + 5) * 22;
+    ctx.fillStyle = PAL.ruin; rect(x, gy - 20 - h, w, h + 20, PAL.ruin);
+    for (let c = 0; c < w; c += 8) if (hash(i * 7 + c) > 0.35) rect(x + c, gy - 26 - h, 5, 6, PAL.ruin);
+    rect(x + w / 2 - 3, gy - h + 4, 6, 10, hash(i + 2) > 0.5 ? '#3a2318' : '#0d0d11');
+    rect(x, gy - 20 - h, 2, h + 20, PAL.ruinHi);
+  }
+  // dead trees
+  const toff = scroll * 0.55;
+  ctx.strokeStyle = PAL.tree; ctx.lineCap = 'square';
+  for (let k = -1; k < 4; k++) {
+    const i = Math.floor(toff / 140) + k, x = Math.round(i * 140 - toff + hash(i + 21) * 80);
+    ctx.lineWidth = 5; ctx.beginPath(); ctx.moveTo(x, gy - 4); ctx.lineTo(x + 2, gy - 70); ctx.stroke();
+    ctx.lineWidth = 3;
+    ctx.beginPath(); ctx.moveTo(x + 1, gy - 46); ctx.lineTo(x - 18, gy - 66); ctx.lineTo(x - 24, gy - 82); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(x + 2, gy - 58); ctx.lineTo(x + 20, gy - 80); ctx.stroke();
+    ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(x + 12, gy - 70); ctx.lineTo(x + 24, gy - 72); ctx.stroke();
+  }
+  // fog band
+  ctx.fillStyle = PAL.fog; ctx.fillRect(0, gy - 34, W, 20); ctx.fillRect(0, gy - 20, W, 10);
+  // road
+  rect(0, gy - 6, W, FIELD_B - gy + 6, PAL.road);
+  const roff = scroll % 32;
+  for (let x = -32; x < W + 32; x += 32) {
+    rect(x - roff, gy - 6, 30, 2, PAL.roadHi);
+    rect(x - roff + 14, gy + 6, 2, 10, PAL.roadDark);
+    rect(x - roff, gy + 16, 30, 2, PAL.roadDark);
+    rect(x - roff + 4, gy + 18, 2, 10, PAL.roadDark);
+  }
+  rect(0, FIELD_B - 4, W, 4, '#0c0b0e');
+}
+function drawTorchLight(t) {
+  if (!state.lv.knight) return;
+  const x = heroX('knight') + 14, y = groundY() - 20;
+  const f = 1 + Math.sin(t * 13) * 0.04 + Math.sin(t * 7.3) * 0.05;
+  const r = (82 + Math.min(40, state.embers * 2)) * f;
+  ctx.save(); ctx.globalCompositeOperation = 'lighter';
+  const g = ctx.createRadialGradient(x, y, 4, x, y, r);
+  g.addColorStop(0, 'rgba(255,150,60,0.30)'); g.addColorStop(0.5, 'rgba(255,110,40,0.10)'); g.addColorStop(1, 'rgba(255,100,40,0)');
+  ctx.fillStyle = g; ctx.fillRect(x - r, y - r, r * 2, r * 2);
+  ctx.restore();
+}
+function drawEmbersDrift(t) { // the road's ash: rising embers, more of them as embers are earned
+  const n = 10 + Math.min(30, state.embers * 2);
+  for (let i = 0; i < n; i++) {
+    const p = (t * (12 + hash(i) * 18) + hash(i + 50) * 400) % 280;
+    const x = (hash(i + 7) * W + Math.sin(t + i) * 8) % W, y = FIELD_B - p;
+    if (y < HUD_H) continue;
+    rect(x, y, 2, 2, i % 3 ? 'rgba(255,120,50,0.55)' : 'rgba(255,200,120,0.6)');
+  }
+}
+
+// ---- Drawn icons (no emoji) ---------------------------------------------------------------
+function coin(x, y, s = 1) {
+  rect(x - 4 * s, y - 5 * s, 8 * s, 10 * s, '#8a5a12'); rect(x - 5 * s, y - 4 * s, 10 * s, 8 * s, '#8a5a12');
+  rect(x - 3 * s, y - 4 * s, 6 * s, 8 * s, PAL.gold); rect(x - 4 * s, y - 3 * s, 8 * s, 6 * s, PAL.gold);
+  rect(x - 1 * s, y - 2 * s, 2 * s, 4 * s, '#fff2b0');
+}
+function flame(x, y, s = 1) {
+  ctx.fillStyle = PAL.ember; ctx.beginPath(); ctx.moveTo(x, y - 8 * s); ctx.lineTo(x + 5 * s, y + 1 * s);
+  ctx.lineTo(x + 3 * s, y + 6 * s); ctx.lineTo(x - 3 * s, y + 6 * s); ctx.lineTo(x - 5 * s, y + 1 * s); ctx.fill();
+  ctx.fillStyle = PAL.torchHi; ctx.beginPath(); ctx.moveTo(x, y - 2 * s); ctx.lineTo(x + 2.5 * s, y + 3 * s);
+  ctx.lineTo(x, y + 6 * s); ctx.lineTo(x - 2.5 * s, y + 3 * s); ctx.fill();
+}
+function swordIcon(x, y, c) {
+  ctx.save(); ctx.translate(x, y); ctx.rotate(-Math.PI / 4);
+  rect(-2, -12, 4, 16, c); rect(-1, -12, 1, 16, '#ffffff66'); rect(-6, 4, 12, 3, '#6b5a40'); rect(-1.5, 7, 3, 6, '#3c2f22');
+  ctx.restore();
+}
+function armorIcon(x, y, c) {
+  ctx.fillStyle = c; ctx.beginPath(); ctx.moveTo(x - 10, y - 9); ctx.lineTo(x - 4, y - 11); ctx.lineTo(x, y - 7);
+  ctx.lineTo(x + 4, y - 11); ctx.lineTo(x + 10, y - 9); ctx.lineTo(x + 8, y + 2); ctx.lineTo(x, y + 11); ctx.lineTo(x - 8, y + 2); ctx.fill();
+  rect(x - 1, y - 6, 2, 14, '#00000044');
+}
+function speaker(x, y, on) {
+  rect(x - 7, y - 3, 4, 6, PAL.ink);
+  ctx.fillStyle = PAL.ink; ctx.beginPath(); ctx.moveTo(x - 3, y - 3); ctx.lineTo(x + 2, y - 8); ctx.lineTo(x + 2, y + 8); ctx.lineTo(x - 3, y + 3); ctx.fill();
+  if (on) { rect(x + 5, y - 3, 2, 6, PAL.ink); rect(x + 8, y - 6, 2, 12, PAL.ink); }
+  else { ctx.strokeStyle = PAL.threat; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(x + 4, y - 5); ctx.lineTo(x + 11, y + 5); ctx.moveTo(x + 11, y - 5); ctx.lineTo(x + 4, y + 5); ctx.stroke(); }
+}
+function panelBox(x, y, w, h, fill = PAL.panelHi, edge = PAL.line) {
+  rect(x, y, w, h, edge); rect(x + 2, y + 2, w - 4, h - 4, fill);
+}
+function button(b, label, sub, enabled, hot) {
+  const fill = !enabled ? '#221f22' : hot ? '#8a3f16' : '#4a2a1a';
+  const edge = !enabled ? '#3a3438' : hot ? PAL.torch : '#7a4a2a';
+  panelBox(b.x, b.y, b.w, b.h, fill, edge);
+  if (enabled && hot) rect(b.x + 2, b.y + 2, b.w - 4, 3, '#ffb36655');
+  text(label, b.x + b.w / 2, b.y + (sub ? 14 : b.h / 2), 13, enabled ? PAL.ink : PAL.dim);
+  if (sub) { coin(b.x + b.w / 2 - ctx.measureText(sub).width / 2 - 6, b.y + 31, 1); text(sub, b.x + b.w / 2 + 6, b.y + 31, 13, enabled ? PAL.gold : PAL.dim); }
+}
+
+// ---- Drawing the battle ------------------------------------------------------------------
+function heroBob(id, t) { return Math.round(Math.sin(t * 4 + id.length) * 1.5 + (state.march > 0 ? Math.abs(Math.sin(t * 14)) * -3 : 0)); }
+function drawField() {
+  const t = state.t;
+  drawBackground(state.scroll);
+  drawTorchLight(t);
+  const gy = groundY();
+  // party, back to front
+  heroOrder().slice().reverse().forEach(id => {
+    const a = state.anim[id];
+    const lunge = id === 'knight' ? Math.sin(Math.min(1, a / 0.18) * Math.PI) * 14 : id === 'archer' ? -a * 10 : 0;
+    drawSprite(id, heroX(id) + lunge, gy + heroBob(id, t));
+    if (id === 'cleric' && a > 0) { // a halo pulse over the party
+      ctx.save(); ctx.globalCompositeOperation = 'lighter'; ctx.globalAlpha = a / 0.4 * 0.5;
+      ctx.fillStyle = PAL.holy; ctx.fillRect(heroX(id) - 14, gy - 74, 28, 3); ctx.restore();
+    }
+    if (id === 'pyro' && a > 0) flame(heroX(id) + 18, gy - 30, 1.2);
+  });
+  // enemy
+  const e = state.enemy;
+  if (e) {
+    const ex = enemyX(), fly = e.kind.fly ? -26 + Math.sin(t * 6) * 5 : 0;
+    const alpha = e.dead ? Math.max(0, 1 - e.dead / 0.4) : 1;
+    const lunge = e.boss ? -Math.sin(Math.min(1, e.lunge / 0.3) * Math.PI) * 18 : 0;
+    drawSprite(e.kind.id, ex + lunge, gy + fly + (e.dead ? e.dead * 30 : 0), { flash: e.flash > 0, alpha, rot: e.dead ? e.dead * 1.2 : 0 });
+    if (!e.dead && e.x < 0.05) { // hp bar and name
+      const bw = e.boss ? 120 : 70, bx = ex - bw / 2, by = gy - (e.boss ? 150 : 82) + fly;
+      rect(bx - 1, by - 1, bw + 2, 8, '#000'); rect(bx, by, bw, 6, '#3a1414');
+      rect(bx, by, bw * Math.max(0, e.hp / e.max), 6, PAL.threat); rect(bx, by, bw * Math.max(0, e.hp / e.max), 2, '#ff8a8a');
+      textOutlined(e.kind.name, ex, by - 10, e.boss ? 14 : 12, e.boss ? PAL.threat : PAL.muted);
+    }
+  }
+  // shots
+  for (const s of state.shots) {
+    const p = Math.min(1, s.t / s.dur), x = s.x0 + (s.x1 - s.x0) * p, y = s.y0 + (s.y1 - s.y0) * p - Math.sin(p * Math.PI) * s.arc;
+    if (s.kind === 'arrow') {
+      ctx.save(); ctx.translate(x, y); ctx.rotate(Math.atan2((s.y1 - s.y0) - Math.cos(p * Math.PI) * Math.PI * s.arc, s.x1 - s.x0));
+      rect(-10, -1, 14, 2, '#c9b48a'); rect(4, -2, 4, 4, '#e8e8f0'); rect(-12, -2, 3, 4, '#5fb04a'); ctx.restore();
+    } else if (s.kind === 'fire') {
+      ctx.save(); ctx.globalCompositeOperation = 'lighter';
+      for (let k = 0; k < 4; k++) { ctx.globalAlpha = 0.25; rect(x - 6 - k * 6, y - 4 + k, 8, 8 - k * 2, PAL.ember); }
+      ctx.restore(); flame(x, y, 1.3);
+    }
+  }
+  // sparks and slashes
+  for (const p of state.sparks) {
+    if (p.slash) {
+      ctx.save(); ctx.globalAlpha = 1 - p.t / 0.2; ctx.strokeStyle = '#fff'; ctx.lineWidth = 3;
+      ctx.beginPath(); ctx.arc(p.x - 10, p.y + 10, 22, -1.2, 0.2); ctx.stroke(); ctx.restore();
+    } else if (p.pillar) {
+      ctx.save(); ctx.globalCompositeOperation = 'lighter'; ctx.globalAlpha = 1 - p.t / 0.45;
+      rect(p.x - 10, HUD_H, 20, groundY() - HUD_H, '#ffe9a655'); rect(p.x - 4, HUD_H, 8, groundY() - HUD_H, '#fff6d0aa'); ctx.restore();
+    } else rect(p.x, p.y, 3, 3, p.gold ? PAL.gold : PAL.torchHi);
+  }
+  // floating numbers
+  for (const f of state.floats) {
+    ctx.globalAlpha = Math.max(0, 1 - f.t / 0.9);
+    textOutlined(f.txt, f.x, f.y - f.t * 40, f.big ? 20 : 14, f.color);
+    ctx.globalAlpha = 1;
+  }
+  drawEmbersDrift(t);
+  // first-minute hint
+  if (state.taps < 6 && state.rebirths === 0 && state.lv.knight < tune.autoUnlockLevel) {
+    const a = 0.6 + Math.sin(t * 6) * 0.4;
+    ctx.globalAlpha = a; textOutlined('화면을 탭해서 베기', W / 2, HUD_H + 70, 18, PAL.torchHi); ctx.globalAlpha = 1;
+  }
+  if (state.toast) {
+    ctx.globalAlpha = Math.min(1, state.toast.t / 0.3);
+    panelBox(20, HUD_H + 92, W - 40, 30, '#0d0c10ee', '#3a3440');
+    text(state.toast.msg, W / 2, HUD_H + 107, 13, state.toast.color); ctx.globalAlpha = 1;
+  }
+}
+function drawHud() {
+  rect(0, 0, W, HUD_H, '#0d0c10'); rect(0, HUD_H - 2, W, 2, '#2a2530');
+  coin(16, 20, 1.3); text(fmt(state.gold), 30, 20, 16, PAL.gold, 'left');
+  const boss = state.enemy && state.enemy.boss;
+  text(`스테이지 ${state.stage}`, 178, 14, 13, boss ? PAL.threat : PAL.ink);
+  text(state.farming ? '파밍 중' : boss ? '보스전' : `${state.kills}/${tune.killsPerStage}`, 178, 29, 11, PAL.muted);
+  if (state.embers > 0) { flame(248, 20, 1); text(String(state.embers), 258, 20, 13, PAL.ember, 'left'); }
+  const bs = buttons();
+  const pb = bs.find(b => b.id === 'pause'), mb = bs.find(b => b.id === 'mute');
+  panelBox(pb.x, pb.y, pb.w, pb.h); rect(pb.x + 9, pb.y + 8, 4, 12, PAL.ink); rect(pb.x + 16, pb.y + 8, 4, 12, PAL.ink);
+  panelBox(mb.x, mb.y, mb.w, mb.h); speaker(mb.x + 13, mb.y + 14, !muted);
+  const bb = bs.find(b => b.id === 'boss');
+  if (bb) { button(bb, '보스 도전 (B)', null, true, true); }
+}
+function drawStrip() { // between field and panel: progress or boss timer, and the party's power
+  rect(0, FIELD_B, W, PANEL_Y - FIELD_B, '#0d0c10');
+  const e = state.enemy;
+  if (e && e.boss && !e.dead) {
+    const p = state.bossT / tune.bossTime;
+    rect(10, FIELD_B + 6, W - 20, 10, '#2a1010'); rect(10, FIELD_B + 6, (W - 20) * p, 10, p < 0.3 ? '#ff4a4a' : PAL.threat);
+    text(`${state.bossT.toFixed(1)}초`, W / 2, FIELD_B + 11, 11, PAL.ink);
+  } else {
+    const n = tune.killsPerStage, w = (W - 20) / n;
+    for (let i = 0; i < n; i++) rect(10 + i * w + 1, FIELD_B + 7, w - 2, 8, i < state.kills ? PAL.torch : '#2a2530');
+  }
+}
+function drawPanel() {
+  rect(0, PANEL_Y, W, H - PANEL_Y, PAL.panel);
+  if (state.tab === 'party') drawParty();
+  if (state.tab === 'gear') drawGear();
+  if (state.tab === 'rebirth') drawRebirth();
+  // tabs
+  buttons().filter(b => b.id.startsWith('tab:')).forEach(b => {
+    const on = state.tab === b.id.slice(4);
+    rect(b.x, b.y, b.w, b.h, on ? '#2c2630' : '#121014'); rect(b.x, b.y, b.w, 2, on ? PAL.torch : '#2a2530');
+    if (b.x > 0) rect(b.x, b.y, 1, b.h, '#2a2530');
+    text(b.label, b.x + b.w / 2, b.y + b.h / 2, 15, on ? PAL.ink : PAL.muted);
+    const dot = (b.id === 'tab:gear' && state.drop) || (b.id === 'tab:rebirth' && embersFor(state.maxStage) > 0);
+    if (dot) { rect(b.x + b.w / 2 + 22, b.y + 10, 7, 7, PAL.threat); }
+  });
+}
+function drawParty() {
+  const bs = buttons();
+  HEROES.forEach((h, i) => {
+    const y = PANEL_Y + 6 + i * 60, lv = state.lv[h.id];
+    panelBox(6, y + 2, W - 12, 56, i % 2 ? '#1c1a20' : '#201d24', '#2c2830');
+    // portrait: the sprite's head and torso, at 2x
+    const im = SPR[h.id];
+    rect(12, y + 8, 44, 44, '#100f13');
+    if (im && im.complete && im.naturalWidth) {
+      ctx.save(); if (!lv) ctx.filter = 'brightness(0.25)';
+      ctx.drawImage(im, 9, 3, 22, 22, 12, y + 8, 44, 44); ctx.restore();
+    }
+    text(lv ? `${h.name}  Lv ${lv}` : h.name, 64, y + 16, 13, lv ? PAL.ink : PAL.muted, 'left');
+    let sub;
+    if (!lv) sub = `${h.role} · 고용 시 +${fmt(heroDps(h, 1))}`;
+    else if (h.id === 'knight' && lv < tune.autoUnlockLevel) sub = `탭 ${fmt(tapDamage())} · Lv${tune.autoUnlockLevel}에 자동 공격`;
+    else if (h.id === 'cleric') sub = `초당 ${fmt(heroDps(h))} · 아군 +${Math.round(lv * tune.clericAura * 100)}%`;
+    else sub = `초당 피해 ${fmt(heroDps(h))}  (+${fmt(heroDps(h, lv + 1) - heroDps(h))})`;
+    text(sub, 64, y + 33, 11, PAL.muted, 'left', 'normal');
+    // milestone bar
+    if (lv) {
+      const nm = nextMilestone(lv), prev = MILESTONES[MILESTONES.indexOf(nm) - 1] || 0;
+      const p = nm ? (lv - prev) / (nm - prev) : 1;
+      rect(64, y + 45, 100, 5, '#2a2530'); rect(64, y + 45, 100 * p, 5, PAL.torch);
+      if (nm) text(`Lv${nm} x${tune.milestoneMult}`, 170, y + 47, 10, PAL.dim, 'left', 'normal');
+    }
+    const b = bs.find(x => x.id === 'buy:' + i), c = heroCost(h), ok = state.gold >= c;
+    button(b, lv ? `강화 (${i + 1})` : `고용 (${i + 1})`, fmt(c), ok, ok);
+  });
+}
+function gearCard(x, y, w, item, slot, title) {
+  panelBox(x, y, w, 70, '#1e1b22', item ? RARITY[item.r].color + '88' : '#2c2830');
+  text(title, x + 10, y + 13, 11, PAL.muted, 'left', 'normal');
+  if (slot === 'weapon') swordIcon(x + 24, y + 42, item ? RARITY[item.r].color : PAL.dim);
+  else armorIcon(x + 24, y + 42, item ? RARITY[item.r].color : PAL.dim);
+  if (!item) { text('비어 있음', x + 46, y + 42, 13, PAL.dim, 'left'); return; }
+  text(`[${RARITY[item.r].name}]`, x + 46, y + 32, 11, RARITY[item.r].color, 'left');
+  text(item.name, x + 46, y + 48, 13, PAL.ink, 'left');
+  text(slot === 'weapon' ? `피해 +${item.pct}%` : `금화 +${item.pct}%`, x + w - 10, y + 13, 12, PAL.torchHi, 'right');
+}
+function drawGear() {
+  gearCard(10, PANEL_Y + 10, W / 2 - 15, state.gear.weapon, 'weapon', '무기');
+  gearCard(W / 2 + 5, PANEL_Y + 10, W / 2 - 15, state.gear.armor, 'armor', '갑옷');
+  const d = state.drop;
+  if (!d) {
+    text('몬스터를 쓰러뜨리면 장비가 떨어진다.', W / 2, PANEL_Y + 120, 13, PAL.muted, 'center', 'normal');
+    text('보스는 반드시 희귀 이상을 떨어뜨린다.', W / 2, PANEL_Y + 142, 13, PAL.muted, 'center', 'normal');
+    return;
+  }
+  text('새 장비', 14, PANEL_Y + 96, 13, PAL.ink, 'left');
+  gearCard(10, PANEL_Y + 106, W - 20, d, d.slot, d.slot === 'weapon' ? '무기' : '갑옷');
+  const diff = d.pct - gearPct(d.slot);
+  text(`지금보다 ${diff >= 0 ? '+' : ''}${diff}%`, W - 20, PANEL_Y + 158, 13, diff >= 0 ? '#7ad36a' : PAL.threat, 'right');
+  const bs = buttons();
+  button(bs.find(b => b.id === 'equip'), '장착 (Z)', null, true, diff >= 0);
+  button(bs.find(b => b.id === 'discard'), '버리기 (X)', null, true, false);
+}
+function drawRebirth() {
+  const gain = embersFor(state.maxStage), ok = gain > 0;
+  flame(W / 2, PANEL_Y + 30, 2.2);
+  text(`잿불 ${state.embers}개 · 모든 피해·금화 x${fmt(emberMult())}`, W / 2, PANEL_Y + 62, 15, PAL.ember);
+  text('환생하면 스테이지·금화·레벨이 처음으로 돌아가지만', W / 2, PANEL_Y + 92, 12, PAL.muted, 'center', 'normal');
+  text('잿불이 남아 다음 행군이 더 강해진다. 장비는 유지된다.', W / 2, PANEL_Y + 110, 12, PAL.muted, 'center', 'normal');
+  text(`최고 스테이지 ${state.maxStage}`, W / 2, PANEL_Y + 138, 13, PAL.ink);
+  text(ok ? `지금 환생하면 잿불 +${gain}  →  x${fmt(1 + (state.embers + gain) * tune.emberBonus)}` : `스테이지 ${tune.prestigeMinStage}에 닿으면 환생할 수 있다`, W / 2, PANEL_Y + 158, 13, ok ? PAL.torchHi : PAL.dim);
+  const b = buttons().find(x => x.id === 'rebirth');
+  button(b, state.confirm > 0 ? '한 번 더 누르면 환생 (R)' : `환생하기 (R)`, null, ok, ok);
+}
+function drawAway() {
+  const a = state.away; if (!a) return;
+  ctx.fillStyle = 'rgba(5,4,8,0.75)'; ctx.fillRect(0, 0, W, H);
+  panelBox(30, 220, W - 60, 170, '#1e1b22', PAL.torch);
+  text('선봉대는 쉬지 않았다', W / 2, 250, 17, PAL.torchHi);
+  text(`자리를 비운 ${fmtTime(a.secs)} 동안`, W / 2, 285, 13, PAL.muted, 'center', 'normal');
+  coin(W / 2 - 50, 318, 1.6); text(`+${fmt(a.gold)}`, W / 2 + 6, 318, 20, PAL.gold);
+  text('탭해서 받기', W / 2, 362, 13, PAL.ink);
+}
+let resultsPending = 0;
+
+// ---- Fixed-step simulation of play --------------------------------------------------------
+function updatePlay(dt) {
+  state.t += dt; state.playTime += dt;
+  if (state.confirm > 0) state.confirm -= dt;
+  if (state.toast && (state.toast.t -= dt) <= 0) state.toast = null;
+  // input
+  if (state.away) {
+    if (taps.length || pressed('Space') || pressed('Enter')) { state.gold += state.away.gold; state.away = null; tone(660, 0.2, 'triangle', 0.2); }
+    taps.length = 0; return;
+  }
+  for (const p of taps) {
+    const b = hitButton(p.x, p.y);
+    if (b) press(b.id);
+    else if (p.y > HUD_H && p.y < FIELD_B) tapAttack(p.x, p.y);
+  }
+  taps.length = 0;
+  if (pressed('Space')) tapAttack();
+  ['Digit1', 'Digit2', 'Digit3', 'Digit4'].forEach((k, i) => { if (pressed(k)) { state.tab = 'party'; buyHero(i); } });
+  if (pressed('KeyQ')) state.tab = 'party';
+  if (pressed('KeyW')) state.tab = 'gear';
+  if (pressed('KeyE')) state.tab = 'rebirth';
+  if (pressed('KeyB')) challengeBoss();
+  if (pressed('KeyZ')) equipDrop();
+  if (pressed('KeyX')) state.drop = null;
+  if (pressed('KeyR') && state.tab === 'rebirth') rebirth();
+  // marching between enemies
+  const e = state.enemy;
+  if (!e) {
+    state.march -= dt; state.scroll += dt * 140;
+    if (state.march <= 0) spawnEnemy(false);
+  } else if (e.dead) {
+    e.dead += dt; if (e.dead > 0.4) { state.enemy = null; state.march = tune.marchTime; }
+  } else {
+    if (e.x > 0) { e.x = Math.max(0, e.x - dt / tune.enemyWalkIn); state.scroll += dt * 60; }
+    if (e.flash > 0) e.flash -= dt;
+    if (e.boss) {
+      e.lunge = (e.lunge + dt) % 2.2;
+      state.bossT -= dt; if (state.bossT <= 0) { failBoss(); }
+    }
+  }
+  // party attacks on their own clocks
+  const target = state.enemy && !state.enemy.dead && state.enemy.x <= 0.05;
+  for (const h of HEROES) {
+    state.anim[h.id] = Math.max(0, state.anim[h.id] - dt);
+    const dps = heroDps(h); if (!dps) continue;
+    state.cd[h.id] -= dt;
+    if (state.cd[h.id] > 0 || !target) continue;
+    state.cd[h.id] += tune[h.every];
+    const hit = dps * tune[h.every], x0 = heroX(h.id), gy = groundY();
+    if (h.id === 'knight') { state.anim.knight = 0.18; damage(hit, false, PAL.ink); tone(300, 0.05, 'square', 0.06); }
+    if (h.id === 'archer') { state.anim.archer = 0.12; state.shots.push({ kind: 'arrow', x0: x0 + 12, y0: gy - 34, x1: enemyX(), y1: gy - 30, arc: 14, t: 0, dur: 0.25, dmg: hit, color: '#9ee08a' }); tone(1200, 0.03, 'triangle', 0.05); }
+    if (h.id === 'cleric') { state.anim.cleric = 0.4; state.sparks.push({ x: enemyX(), y: 0, t: 0, pillar: true, vx: 0, vy: 0 }); damage(hit, false, PAL.holy); tone(880, 0.2, 'sine', 0.08); }
+    if (h.id === 'pyro') { state.anim.pyro = 0.3; state.shots.push({ kind: 'fire', x0: x0 + 16, y0: gy - 36, x1: enemyX(), y1: gy - 28, arc: 40, t: 0, dur: 0.45, dmg: hit, color: PAL.ember }); tone(160, 0.25, 'sawtooth', 0.08); }
+  }
+  for (const s of state.shots) { s.t += dt; if (s.t >= s.dur && !s.done) { s.done = true; damage(s.dmg, false, s.color); if (s.kind === 'fire') for (let k = 0; k < 10; k++) state.sparks.push({ x: s.x1, y: s.y1, vx: (rng() - 0.5) * 140, vy: -rng() * 120, t: 0 }); } }
+  state.shots = state.shots.filter(s => !s.done);
+  for (const p of state.sparks) { p.t += dt; p.x += p.vx * dt; p.y += p.vy * dt; p.vy += 300 * dt; }
+  state.sparks = state.sparks.filter(p => p.t < (p.pillar ? 0.45 : p.slash ? 0.2 : 0.7));
+  for (const f of state.floats) f.t += dt;
+  state.floats = state.floats.filter(f => f.t < 0.9);
+  // save on the step clock
+  state.saveT += dt; if (state.saveT >= tune.saveEvery) { state.saveT = 0; save(); }
+  if (resultsPending > 0 && (resultsPending -= dt) <= 0) { scene = 'results'; save(); }
+}
+
+const scenes = {
+  figures: {
+    update(dt) { state.t += dt; },
+    draw() {
+      clear('#1a1820');
+      text('잿빛 선봉대: 등장 인물', W / 2, 22, 15, PAL.ink);
+      const rows = [
+        HEROES.map(h => [h.id, h.name]),
+        ENEMIES.map(e => [e.id, e.name]),
+      ];
+      rows.forEach((row, r) => row.forEach(([id, name], i) => {
+        const x = 46 + i * 89, y = 140 + r * 130;
+        ctx.fillStyle = '#00000044'; ctx.fillRect(x - 40, y - 100, 80, 118);
+        drawSprite(id, x, y); text(name, x, y + 12, 11, PAL.ink);
+      }));
+      BOSSES.forEach((b, i) => { const x = 62 + i * 118, y = 470; drawSprite(b.id, x, y, { scale: 0.9 }); text(b.name, x, y + 14, 12, PAL.threat); });
+    },
+  },
+  title: {
+    update() {
+      const t = taps.shift(); taps.length = 0;
+      const newGame = (t && t.y > 560) || pressed('KeyN');
+      if (newGame) { reset(); scene = 'play'; return; }
+      if (t || pressed('Enter') || pressed('Space')) {
+        const s = hasSave && loadSave();
+        if (s) continueSave(s); else reset();
+        scene = 'play';
+      }
+    },
+    draw() {
+      const t = clock.now();
+      clear('#07070a');
+      const g = ctx.createRadialGradient(W / 2, 330, 10, W / 2, 330, 220 + Math.sin(t * 9) * 6);
+      g.addColorStop(0, 'rgba(255,140,60,0.35)'); g.addColorStop(1, 'rgba(255,120,40,0)');
+      ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+      rect(0, 360, W, 4, '#2a2420');
+      drawSprite('knight', W / 2, 362, { scale: 1.5 });
+      textOutlined(TITLE, W / 2, 120, 40, PAL.torchHi);
+      text('ASHEN VANGUARD', W / 2, 158, 13, PAL.muted);
+      CONTROLS.forEach((c, i) => text(c, W / 2, 400 + i * 24, 13, PAL.muted, 'center', 'normal'));
+      const a = 0.6 + Math.sin(t * 4) * 0.4; ctx.globalAlpha = a;
+      text(hasSave ? '탭해서 이어하기 (Enter)' : '탭해서 시작 (Enter)', W / 2, 530, 18, PAL.ink); ctx.globalAlpha = 1;
+      if (hasSave) text('여기를 누르면 새로 시작 (N)', W / 2, 590, 13, PAL.dim);
+    },
+  },
+  play: {
+    update(dt) {
+      if (pressed('KeyP') || pressed('Escape')) { scene = 'pause'; return; }
+      updatePlay(dt);
+    },
+    draw() {
+      clear('#07070a');
+      drawField(); drawHud(); drawStrip(); drawPanel(); drawAway();
+    },
+  },
+  pause: {
+    update() { const t = taps.length; taps.length = 0; if (t || pressed('KeyP') || pressed('Escape')) scene = 'play'; },
+    draw() {
+      scenes.play.draw(); ctx.fillStyle = 'rgba(5,4,8,0.7)'; ctx.fillRect(0, 0, W, H);
+      textOutlined('일시정지', W / 2, H / 2 - 20, 30, PAL.ink); text('탭하거나 P로 계속', W / 2, H / 2 + 20, 14, PAL.muted);
+    },
+  },
+  results: {
+    update() {
+      const t = taps.length; taps.length = 0;
+      if (t || pressed('Enter')) { scene = 'play'; }
+    },
+    draw() {
+      scenes.play.draw(); ctx.fillStyle = 'rgba(5,4,8,0.8)'; ctx.fillRect(0, 0, W, H);
+      flame(W / 2, 200, 3);
+      textOutlined('잿불의 군주가 쓰러졌다', W / 2, 260, 22, PAL.torchHi);
+      text(`걸린 시간 ${fmtTime(state.playTime)} · 환생 ${state.rebirths}회`, W / 2, 300, 14, PAL.ink, 'center', 'normal');
+      text(`잿불 ${state.embers}개 · 최고 스테이지 ${state.maxStage}`, W / 2, 324, 14, PAL.ink, 'center', 'normal');
+      text('행군은 계속된다. 탭해서 계속 (Enter)', W / 2, 380, 14, PAL.muted);
+    },
+  },
+};
+
+// ---- Input: keys by position (event.code), OS key repeat ignored ------------------------
+const down = new Set(), hit = new Set();
+const pressed = code => hit.has(code); // true for one step after the key goes down
+addEventListener('keydown', e => {
+  startAudio();
+  if (!e.repeat) { down.add(e.code); hit.add(e.code); }
+  if (e.code === 'Space' || e.code.startsWith('Arrow')) e.preventDefault();
+});
+addEventListener('keyup', e => down.delete(e.code));
+canvas.addEventListener('pointerdown', e => {
+  startAudio();
+  const r = canvas.getBoundingClientRect();
+  taps.push({ x: (e.clientX - r.left) / r.width * W, y: (e.clientY - r.top) / r.height * H });
+  e.preventDefault();
+});
+addEventListener('blur', () => { down.clear(); if (scene === 'play') save(); });
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden' && scene === 'play') save(); });
+
+// ---- Audio: started on first input, mute on M --------------------------------------------
+let audio = null, muted = false;
+function startAudio() {
+  if (!audio) {
+    const ac = window.GAME_AUDIO || new (window.AudioContext || window.webkitAudioContext)(); // a check may inject one
+    const out = ac.createGain(); out.gain.value = muted ? 0 : tune.volume;
+    out.connect(ac.destination); audio = { ac, out };
+  }
+  if (audio.ac.state === 'suspended') audio.ac.resume();
+}
+function setMuted(m) { muted = m; if (audio) audio.out.gain.value = m ? 0 : tune.volume; }
+addEventListener('tune', () => setMuted(muted));
+function tone(freq, dur, type = 'square', vol = 0.3) {
+  if (!audio || muted) return;
+  const t = audio.ac.currentTime, o = audio.ac.createOscillator(), g = audio.ac.createGain();
+  o.type = type; o.frequency.value = freq;
+  g.gain.setValueAtTime(vol, t); g.gain.exponentialRampToValueAtTime(0.001, t + dur);
+  o.connect(g).connect(audio.out); o.start(t); o.stop(t + dur);
+}
+
+// ---- Loop: fixed step, frame time clamped ---------------------------------------------
+function step() {
+  if (pressed('KeyM')) { setMuted(!muted); hit.delete('KeyM'); }
+  scenes[scene].update(STEP); hit.clear();
+}
+let last, acc = 0, ALPHA = 1;
+function tick() {
+  const now = clock.now();
+  acc += Math.min(now - last, 0.25); last = now;
+  while (acc >= STEP) { step(); acc -= STEP; }
+  ALPHA = acc / STEP;
+  drawFrame();
+}
+function drawFrame() { scenes[scene].draw(); }
+function frame() { tick(); requestAnimationFrame(frame); }
+function timer() { if (document.visibilityState === 'visible' && clock.now() - last > 0.1) tick(); }
+
+// ---- What a check can read and drive (?manual=1 stops the loop; players never see it) ----
+window.game = {
+  get scene() { return scene; },
+  get state() { return state; },
+  press(code) { hit.add(code); },
+  hold(code, on) { on ? down.add(code) : down.delete(code); },
+  get events() { return events; },
+  step(n = 1, draw = true, alpha = 1) {
+    for (let i = 0; i < n; i++) step();
+    if (draw) { ALPHA = alpha; drawFrame(); }
+  },
+};
+
+reset();
+scene = params.get('scene') || 'title';
+last = clock.now();
+if (params.get('manual') === '1') drawFrame();
+else { requestAnimationFrame(frame); setInterval(timer, 50); }
+</script>
+</body>
+</html>
