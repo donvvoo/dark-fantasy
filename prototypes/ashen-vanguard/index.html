@@ -22,6 +22,8 @@
 'use strict';
 // 잿빛 선봉대: a portrait idle RPG. A knight walks a ruined road; companions join the column;
 // gold buys levels, bosses gate every 10 stages, rebirth trades the run for embers.
+// Around that loop: skills in three slots, a crypt dungeon for materials, knight-order ranks
+// earned in trials, companion stars, gear enhance and merge, and a spirit that follows the party.
 
 // ---- Built to be checked ----------------------------------------------------------------
 const params = new URLSearchParams(location.search);
@@ -31,7 +33,7 @@ const W = 360, H = 640;         // logical size: a portrait phone screen
 const PIXEL = true;             // dot look: the whole screen draws at 360x640 real pixels, then scales up unsmoothed
 const FONT = '"Galmuri11","Apple SD Gothic Neo","Malgun Gothic","WenQuanYi Zen Hei",sans-serif'; // Korean pixel font, 11px grid
 const TITLE = '잿빛 선봉대';
-const CONTROLS = ['화면 탭: 베기 (Space)', '아래 버튼: 강화·고용 (1~4)', '탭 전환: Q 파티 · W 장비 · E 환생', 'B 보스 도전 · P 일시정지 · M 소리'];
+const CONTROLS = ['화면 탭: 베기 (Space) · 스킬: Z X C', '탭: Q 파티 · W 스킬 · E 장비 · A 모험 · F 임무 · S 환생', '1~4 강화 · D 던전 · G 승급 시험 · B 보스 도전', 'P 일시정지 · M 소리'];
 const clock = window.GAME_CLOCK || { now: () => performance.now() / 1000 }; // a check may inject one
 const CHEAP = params.get('render') === 'cheap';
 let seed;
@@ -46,18 +48,15 @@ const events = []; // window.game.events: anything the game wants a run to see
 // ---- Screen ---------------------------------------------------------------------------
 const canvas = document.getElementById('game');
 const ctx = canvas.getContext('2d');
-let viewScale = 1;
-function fit() { // fills the window at any size and pixel ratio
+function fit() { // fills the window; every logical pixel stays one hard-edged block
   const k = Math.min(innerWidth / W, innerHeight / H);
-  const s = k; // fills the phone; every logical pixel stays one hard-edged block
-  const r = PIXEL ? 1 : s * (devicePixelRatio || 1);
-  viewScale = s;
-  canvas.width = Math.round(W * r); canvas.height = Math.round(H * r);
-  canvas.style.width = Math.round(W * s) + 'px'; canvas.style.height = Math.round(H * s) + 'px';
-  canvas.style.marginTop = Math.max(0, Math.floor((innerHeight - H * s) / 2)) + 'px';
+  canvas.width = W; canvas.height = H;
+  canvas.style.width = Math.round(W * k) + 'px'; canvas.style.height = Math.round(H * k) + 'px';
+  canvas.style.marginTop = Math.max(0, Math.floor((innerHeight - H * k) / 2)) + 'px';
   canvas.style.imageRendering = 'pixelated';
-  ctx.setTransform(r, 0, 0, r, 0, 0); ctx.imageSmoothingEnabled = false; // pixel sprites stay sharp
+  ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.imageSmoothingEnabled = false;
 }
+addEventListener('resize', fit); fit();
 // Galmuri11 is drawn only at its native 11px and at 2x/4x, so every glyph lands on the pixel grid.
 if (window.PIXEL_FONTS && window.FontFace) {
   const bin = b64 => Uint8Array.from(atob(b64), ch => ch.charCodeAt(0)).buffer;
@@ -66,7 +65,6 @@ if (window.PIXEL_FONTS && window.FontFace) {
   });
 }
 function pxSize(size) { return size >= 36 ? 44 : size >= 18 ? 22 : 11; }
-addEventListener('resize', fit); fit();
 function clear(c) { ctx.fillStyle = c; ctx.fillRect(0, 0, W, H); }
 function setFont(size, weight) {
   const px = pxSize(size);
@@ -85,8 +83,8 @@ function textOutlined(s, x, y, size, c, align = 'center') { // a 1-pixel dark ou
   ctx.fillStyle = c; ctx.fillText(s, x, y);
 }
 function textWidth(s, size, weight = 'bold') { setFont(size, weight); return ctx.measureText(s).width; }
-// Pixel bitmaps: rows of characters, each a palette key ('.' is empty), drawn s pixels per dot.
-function bitmap(rows, x, y, pal, s = 1) {
+function rect(x, y, w, h, c) { ctx.fillStyle = c; ctx.fillRect(Math.round(x), Math.round(y), Math.round(w), Math.round(h)); }
+function bitmap(rows, x, y, pal, s = 1) { // rows of palette keys, '.' empty, s pixels per dot
   x = Math.round(x); y = Math.round(y);
   for (let j = 0; j < rows.length; j++) for (let i = 0; i < rows[j].length; i++) {
     const c = pal[rows[j][i]]; if (c) { ctx.fillStyle = c; ctx.fillRect(x + i * s, y + j * s, s, s); }
@@ -96,50 +94,90 @@ function disc(cx, cy, r, c) { // a pixel circle, row by row
   ctx.fillStyle = c;
   for (let dy = -r; dy <= r; dy++) { const w = Math.floor(Math.sqrt(r * r - dy * dy)); ctx.fillRect(Math.round(cx - w), Math.round(cy + dy), w * 2 + 1, 1); }
 }
-function rect(x, y, w, h, c) { ctx.fillStyle = c; ctx.fillRect(Math.round(x), Math.round(y), Math.round(w), Math.round(h)); }
+function pixelLine(x0, y0, x1, y1, w, c) { // a stepped line of w-by-w blocks
+  ctx.fillStyle = c; x0 = Math.round(x0); y0 = Math.round(y0); x1 = Math.round(x1); y1 = Math.round(y1);
+  const n = Math.max(Math.abs(x1 - x0), Math.abs(y1 - y0), 1);
+  for (let i = 0; i <= n; i++) ctx.fillRect(Math.round(x0 + (x1 - x0) * i / n), Math.round(y0 + (y1 - y0) * i / n), w, w);
+}
 
-// ---- Palette: dark ruins, bright figures, torch-orange rewards, blood-red threat -----------
+// ---- Palette: dark ruins, bright figures; the UI is oak, leather and gold ------------------
 const PAL = {
-  sky0: '#14151d', sky1: '#2b2633', glow: '#5a2a22', mount: '#22232d', ruin: '#1b1c24', ruinHi: '#2c2d38',
-  tree: '#121216', fog: 'rgba(120,120,140,0.10)', road: '#3a332d', roadDark: '#2a2420', roadHi: '#4a4139',
-  panel: '#17151a', panelHi: '#24212a', line: '#3b3540', ink: '#ece3d6', muted: '#a59c90', dim: '#9a9086',
-  torch: '#ff9a3c', torchHi: '#ffd27a', gold: '#f2c14e', threat: '#d23a3a', ember: '#ff6a2a', holy: '#ffe9a6',
-  common: '#c9c4bb', rare: '#4fa3ff', epic: '#c06bff', legend: '#ffb02e',
+  mount: '#22232d', ruin: '#1b1c24', ruinHi: '#2c2d38', tree: '#121216', fog: 'rgba(120,120,140,0.10)',
+  road: '#3a332d', roadDark: '#2a2420', roadHi: '#4a4139',
+  ink: '#f3e6cc', muted: '#c4ad8a', dim: '#a08c72', torch: '#ff9a3c', torchHi: '#ffd27a', gold: '#f6c453',
+  threat: '#e04848', ember: '#ff6a2a', holy: '#ffe9a6', gem: '#5fb6ff', soul: '#c084ff', scroll: '#e8d3a8',
+  wood: '#5b3a22', woodHi: '#7d5230', woodDk: '#3a2414', trim: '#d4a24a', trimHi: '#ffe08a', leather: '#2a1d16', leatherHi: '#36261c',
+  common: '#d8d2c6', rare: '#5fb6ff', epic: '#c97cff', legend: '#ffb02e', good: '#8ee27a',
 };
 
-// ---- Sprites (PixelLab, 32px heroes and enemies, 64px bosses, drawn at 2x) -----------------
+// ---- Sprites (PixelLab: 32px heroes, monsters, spirits and icons; 64px bosses; drawn 2x) ----
 const SPR = {};
 const SPRITE_SCALE = 2;
-['knight', 'archer', 'cleric', 'pyro', 'skeleton', 'ghoul', 'bat', 'cultist', 'boss_rider', 'boss_priest', 'boss_lord']
-  .forEach(n => { const im = new Image(); im.src = (window.SPRITES && SPRITES[n]) || `assets/${n}.png`; SPR[n] = im; });
+const META = {}; // per sprite, measured once loaded: empty rows under the feet and a square crop of the face
+function measure(n, im) {
+  try {
+    const c = document.createElement('canvas'); c.width = im.naturalWidth; c.height = im.naturalHeight;
+    const g = c.getContext('2d'); g.drawImage(im, 0, 0);
+    const d = g.getImageData(0, 0, c.width, c.height).data;
+    let top = c.height, bottom = -1, left = c.width, right = -1;
+    for (let y = 0; y < c.height; y++) for (let x = 0; x < c.width; x++) if (d[(y * c.width + x) * 4 + 3] > 40) {
+      if (y < top) top = y; if (y > bottom) bottom = y; if (x < left) left = x; if (x > right) right = x;
+    }
+    if (bottom < 0) return;
+    const side = Math.round((bottom - top) * 0.5), cx = Math.round((left + right) / 2);
+    META[n] = { foot: c.height - 1 - bottom, face: [Math.max(0, cx - side / 2 - 2), top, side, side], top };
+  } catch (e) { /* a tainted canvas: keep the defaults */ }
+}
+Object.keys(window.SPRITES || {}).forEach(n => { const im = new Image(); im.onload = () => measure(n, im); im.src = SPRITES[n]; SPR[n] = im; });
 function drawSprite(name, x, y, opts = {}) { // x: centre, y: feet
   const im = SPR[name];
-  const sc = SPRITE_SCALE * (opts.scale || 1);
   if (!im || !im.complete || !im.naturalWidth) return;
+  const sc = (im.naturalWidth >= 48 ? 1 : SPRITE_SCALE) * (opts.scale || 1); // 64px and up draw 1:1
   const w = im.naturalWidth * sc, h = im.naturalHeight * sc;
   ctx.save();
   if (opts.alpha !== undefined) ctx.globalAlpha = opts.alpha;
   if (opts.flash) ctx.filter = 'brightness(2.6)';
+  if (opts.dark) ctx.filter = 'brightness(0.2)';
   ctx.translate(Math.round(x), Math.round(y));
   if (opts.rot) ctx.rotate(opts.rot);
-  ctx.drawImage(im, -Math.round(w / 2), -h + Math.round(4 * sc), w, h); // sprites carry ~4px of floor under the shadow
+  ctx.drawImage(im, -Math.round(w / 2), -h + Math.round(((META[name] && META[name].foot) || 0) * sc), w, h); // feet on the line
   ctx.restore();
 }
+function drawIcon(name, x, y, dark) { // a 32px PixelLab icon at 1x, top-left at x,y
+  const im = SPR[name]; if (!im || !im.complete || !im.naturalWidth) return;
+  ctx.save(); if (dark) ctx.filter = 'brightness(0.3) saturate(0)'; ctx.drawImage(im, Math.round(x), Math.round(y)); ctx.restore();
+}
 
-// ---- Content: who fights, who is fought --------------------------------------------------
+// ---- Content -------------------------------------------------------------------------------
 const HEROES = [
-  { id: 'knight', name: '기사 에드릭', role: '근접 · 탭 피해', cost: 'knightCost', dps: 'knightDps', every: 'knightInterval' },
-  { id: 'archer', name: '궁수 리안', role: '연사', cost: 'archerCost', dps: 'archerDps', every: 'archerInterval' },
-  { id: 'cleric', name: '성직자 세라', role: '성광 · 아군 강화', cost: 'clericCost', dps: 'clericDps', every: 'clericInterval' },
-  { id: 'pyro', name: '화염술사 모르간', role: '화염구', cost: 'pyroCost', dps: 'pyroDps', every: 'pyroInterval' },
+  { id: 'knight', name: '에드릭', role: '근접 · 탭', cost: 'knightCost', dps: 'knightDps', every: 'knightInterval' },
+  { id: 'archer', name: '리안', role: '궁수 · 연사', cost: 'archerCost', dps: 'archerDps', every: 'archerInterval' },
+  { id: 'cleric', name: '세라', role: '성직자 · 아군 강화', cost: 'clericCost', dps: 'clericDps', every: 'clericInterval' },
+  { id: 'pyro', name: '모르간', role: '화염술사 · 폭발', cost: 'pyroCost', dps: 'pyroDps', every: 'pyroInterval' },
 ];
 const ENEMIES = [
-  { id: 'skeleton', name: '해골 병사' }, { id: 'ghoul', name: '굶주린 구울' },
-  { id: 'bat', name: '핏빛 박쥐', fly: true }, { id: 'cultist', name: '잿불 광신도' },
+  { id: 'skeleton', name: '해골 전사' }, { id: 'ghoul', name: '굶주린 구울' },
+  { id: 'bat', name: '흡혈 박쥐', fly: true }, { id: 'cultist', name: '뿔가면 광신도' },
 ];
 const BOSSES = [
   { id: 'boss_rider', name: '뼈의 기수' }, { id: 'boss_priest', name: '역병 사제' }, { id: 'boss_lord', name: '잿불의 군주' },
 ];
+const CRYPT = [{ id: 'boss_warden', name: '지하묘지 간수' }, { id: 'boss_wyrm', name: '뼈의 비룡' }];
+const EXAMINER = { id: 'boss_examiner', name: '기사단 시험관' };
+const SKILLS = [
+  { id: 'slash', name: '잿불 베기', icon: 'icon_slash', cd: 'slashCd', unlock: 'slashUnlock', desc: k => `적 하나에 파티 피해 x${fmt(tune.slashPower * k)} + 탭 5회` },
+  { id: 'rain', name: '화살비', icon: 'icon_rain', cd: 'rainCd', unlock: 'rainUnlock', desc: k => `화살 6발, 각각 파티 피해 x${fmt(tune.rainPower * k)}` },
+  { id: 'sanct', name: '성역의 빛', icon: 'icon_sanct', cd: 'sanctCd', unlock: 'sanctUnlock', desc: k => `${tune.sanctTime}초 동안 파티 피해 +${Math.round(tune.sanctBoost * k * 100)}%` },
+  { id: 'storm', name: '화염 폭풍', icon: 'icon_storm', cd: 'stormCd', unlock: 'stormUnlock', desc: k => `파티 피해 x${fmt(tune.stormPower * k)} 폭발 + 3초 화상` },
+  { id: 'cry', name: '전투의 함성', icon: 'icon_cry', cd: 'cryCd', unlock: 'cryUnlock', desc: k => `${tune.cryTime}초 동안 탭 x${fmt(3 * k)}, 초당 ${tune.cryTaps}회 자동 탭` },
+  { id: 'gold', name: '황금의 손길', icon: null, cd: 'goldCd', unlock: 'goldUnlock', desc: k => `${tune.goldTime}초 동안 금화 x${fmt(1 + k)}` },
+];
+const SPIRITS = [
+  { id: 'fire', sprite: 'spirit_fire', name: '불씨 정령', rank: 1, desc: lv => `파티 피해 +${Math.round((tune.fireBase + tune.fireLv * (lv - 1)) * 100)}%` },
+  { id: 'frost', sprite: 'spirit_frost', name: '서리 정령', rank: 2, desc: lv => `제한 시간 +${fmt(tune.frostBase + tune.frostLv * (lv - 1))}초` },
+  { id: 'light', sprite: 'spirit_light', name: '빛 정령', rank: 3, desc: lv => `금화 +${Math.round((tune.lightBase + tune.lightLv * (lv - 1)) * 100)}%` },
+];
+const RANKS = ['견습 기사', '종자', '정기사', '기사장', '성기사', '잿불 성기사'];
 const RARITY = [
   { name: '일반', color: PAL.common, k: 'gearCommon' }, { name: '희귀', color: PAL.rare, k: 'gearRare' },
   { name: '영웅', color: PAL.epic, k: 'gearEpic' }, { name: '전설', color: PAL.legend, k: 'gearLegend' },
@@ -149,6 +187,67 @@ const GEAR_NAMES = {
   armor: ['누더기 사슬갑옷', '순례자의 흉갑', '흑철 판금', '잿불 성갑'],
 };
 const MILESTONES = [25, 50, 100, 200, 400];
+
+// ---- Coming back: daily orders, attendance, achievements (calendar days are the only real clock read) ----
+const DAILY = [
+  { id: 'kills', name: '몬스터 처치', need: 'dailyKills', reward: { stones: 30 } },
+  { id: 'taps', name: '직접 베기 (탭)', need: 'dailyTaps', reward: { scrolls: 3 } },
+  { id: 'ups', name: '동료 강화', need: 'dailyUps', reward: { souls: 3 } },
+  { id: 'casts', name: '스킬 사용', need: 'dailyCasts', reward: { stones: 20 } },
+  { id: 'dungeons', name: '지하묘지 돌파', need: 'dailyDungeons', reward: { keys: 1, scrolls: 2 } },
+];
+const DAILY_BONUS = { souls: 5, stones: 50 };
+const ATTEND = [{ stones: 20 }, { scrolls: 3 }, { keys: 2 }, { souls: 5 }, { stones: 60 }, { scrolls: 6 }, { souls: 15, stones: 100 }];
+const ACH = [ // chains: each tier pays once, the next tier shows after it
+  { id: 'stage', name: '최고 스테이지', of: () => state.bestStage, tiers: [10, 20, 30, 50, 80], reward: i => ({ souls: 5 * (i + 1) }) },
+  { id: 'boss', name: '보스 처치', of: () => state.stats.bossKills, tiers: [3, 10, 30, 100], reward: i => ({ scrolls: 3 * (i + 1) }) },
+  { id: 'kills', name: '몬스터 처치', of: () => state.stats.kills, tiers: [500, 2000, 10000, 50000], reward: i => ({ stones: 40 * (i + 1) }) },
+  { id: 'rebirth', name: '환생', of: () => state.rebirths, tiers: [1, 3, 10], reward: i => ({ souls: 10 * (i + 1) }) },
+  { id: 'rank', name: '기사단 서열', of: () => state.rank, tiers: [1, 2, 3, 4, 5], reward: i => ({ keys: 1, scrolls: 4 * (i + 1) }) },
+  { id: 'crypt', name: '지하묘지 층', of: () => state.floor - 1, tiers: [3, 6, 10, 20], reward: i => ({ stones: 80 * (i + 1) }) },
+];
+function today() { const d = new Date(); return `${d.getFullYear()}-${d.getMonth() + 1}-${d.getDate()}`; }
+function checkDay() { // a new calendar day: fresh orders, and attendance can be claimed again
+  const t = today();
+  if (state.daily.day !== t) state.daily = { day: t, prog: {}, claimed: {}, bonus: false };
+}
+function count(id, n = 1) { if (state.stats[id] !== undefined) state.stats[id] += n; state.daily.prog[id] = (state.daily.prog[id] || 0) + n; }
+function grant(r) {
+  const k = tune.rewardScale, got = [];
+  for (const [key, v] of Object.entries(r)) {
+    const n = key === 'keys' ? v : Math.ceil(v * k);
+    if (key === 'keys') state.keys = Math.min(tune.keysMax + 5, state.keys + n); else state[key] += n;
+    got.push(`${{ stones: '강화석', scrolls: '두루마리', souls: '영혼석', keys: '열쇠', gold: '금화' }[key]} +${fmt(n)}`);
+  }
+  tone(784, 0.15, 'triangle', 0.2); tone(1046, 0.25, 'triangle', 0.2);
+  return got.join(' · ');
+}
+function dailyDone(q) { return (state.daily.prog[q.id] || 0) >= tune[q.need]; }
+function claimDaily(i) {
+  const q = DAILY[i]; if (!q || state.daily.claimed[q.id] || !dailyDone(q)) return;
+  state.daily.claimed[q.id] = true; toast(`임무 완료! ${grant(q.reward)}`, PAL.trimHi);
+}
+function claimDailyBonus() {
+  if (state.daily.bonus || !DAILY.every(q => state.daily.claimed[q.id])) return;
+  state.daily.bonus = true; popup('오늘의 임무 전부 완료!', [grant(DAILY_BONUS)], PAL.trimHi);
+}
+function canAttend() { return state.attend.last !== today(); }
+function claimAttend() {
+  if (!canAttend()) return;
+  const i = state.attend.idx % ATTEND.length;
+  state.attend = { last: today(), idx: state.attend.idx + 1 };
+  popup(`출석 ${i + 1}일째`, [grant(ATTEND[i])], PAL.trimHi);
+}
+function achTier(a) { return state.ach[a.id] || 0; }
+function achReady(a) { const i = achTier(a); return i < a.tiers.length && a.of() >= a.tiers[i]; }
+function claimAch(id) {
+  const a = ACH.find(x => x.id === id); if (!a || !achReady(a)) return;
+  const i = achTier(a); state.ach[a.id] = i + 1; toast(`업적: ${a.name} ${a.tiers[i]} · ${grant(a.reward(i))}`, PAL.trimHi);
+}
+function questAlert() {
+  return canAttend() || DAILY.some(q => dailyDone(q) && !state.daily.claimed[q.id])
+    || (!state.daily.bonus && DAILY.every(q => state.daily.claimed[q.id])) || ACH.some(achReady);
+}
 
 // ---- Numbers ------------------------------------------------------------------------------
 const UNITS = ['', 'K', 'M', 'B', 'T'];
@@ -167,96 +266,143 @@ function fmtTime(s) {
 // ---- Rules: pure functions of state -----------------------------------------------------
 function isBossStage(s) { return s % tune.bossEvery === 0; }
 function bossIndex(s) { return Math.floor(s / tune.bossEvery) - 1; }
-function enemyHp(s, boss) {
-  const base = tune.hpBase * Math.pow(tune.hpGrowth, s - 1);
-  return boss ? base * (tune.bossHpMult + tune.bossHpMultStep * bossIndex(s)) : base;
-}
+function stageHp(s) { return tune.hpBase * Math.pow(tune.hpGrowth, s - 1); }
+function enemyHp(s, boss) { return boss ? stageHp(s) * (tune.bossHpMult + tune.bossHpMultStep * bossIndex(s)) : stageHp(s); }
+function dungeonHp(f) { return stageHp(tune.dungeonStage + f * tune.dungeonFloorStep) * tune.dungeonHpMult; }
+function rankReq(r) { return r * tune.rankReqStep; }
+function trialHp(r) { return stageHp(rankReq(r)) * tune.trialHpMult; }
 function emberMult() { return 1 + state.embers * tune.emberBonus; }
-function gearPct(slot) { return state.gear[slot] ? state.gear[slot].pct : 0; }
+function spiritLv(id) { return state.spiritLv[id] || 0; }
+function spiritOn(id) { return state.spirit === id && spiritLv(id) > 0; }
+function fireBonus() { return spiritOn('fire') ? tune.fireBase + tune.fireLv * (spiritLv('fire') - 1) : 0; }
+function frostBonus() { return spiritOn('frost') ? tune.frostBase + tune.frostLv * (spiritLv('frost') - 1) : 0; }
+function lightBonus() { return spiritOn('light') ? tune.lightBase + tune.lightLv * (spiritLv('light') - 1) : 0; }
+function gearPct(slot) { const g = state.gear[slot]; return g ? Math.round(g.pct * (1 + (g.plus || 0) * tune.enhPct)) : 0; }
+function skillK(id) { return 1 + tune.skillLvStep * ((state.skillLv[id] || 1) - 1); }
 function partyMult() {
-  const cl = state.lv.cleric;
-  return (1 + gearPct('weapon') / 100) * emberMult() * (1 + cl * tune.clericAura);
+  return (1 + gearPct('weapon') / 100) * emberMult() * (1 + state.lv.cleric * tune.clericAura)
+    * Math.pow(tune.rankBonus, state.rank) * (1 + fireBonus())
+    * (state.buffs.sanct > 0 ? 1 + tune.sanctBoost * skillK('sanct') : 1);
 }
+function goldMult() { return (1 + gearPct('armor') / 100) * emberMult() * (1 + lightBonus()) * (state.buffs.gold > 0 ? 1 + skillK('gold') : 1); }
 function milestoneMult(lv) { let m = 1; for (const t of MILESTONES) if (lv >= t) m *= tune.milestoneMult; return m; }
 function nextMilestone(lv) { for (const t of MILESTONES) if (lv < t) return t; return null; }
+function starMult(id) { return Math.pow(tune.starMult, state.stars[id] || 0); }
 function heroCost(h) { return Math.ceil(tune[h.cost] * Math.pow(tune.costGrowth, state.lv[h.id])); }
 function heroDps(h, lv = state.lv[h.id]) {
   if (lv <= 0) return 0;
   if (h.id === 'knight' && lv < tune.autoUnlockLevel) return 0;
-  return tune[h.dps] * lv * milestoneMult(lv) * partyMult();
+  return tune[h.dps] * lv * milestoneMult(lv) * starMult(h.id) * partyMult();
 }
 function totalDps() { return HEROES.reduce((a, h) => a + heroDps(h), 0); }
 function tapDamage() {
   const lv = state.lv.knight;
-  return (tune.tapBase + lv * tune.tapPerLevel) * milestoneMult(lv) * partyMult() + totalDps() * tune.tapDpsShare;
+  const base = (tune.tapBase + lv * tune.tapPerLevel) * milestoneMult(lv) * starMult('knight') * partyMult() + totalDps() * tune.tapDpsShare;
+  return state.buffs.cry > 0 ? base * 3 * skillK('cry') : base;
 }
-function killGold(s, boss) {
-  return Math.max(1, Math.ceil(enemyHp(s, false) * tune.goldRatio * (boss ? tune.bossGoldMult : 1)
-    * (1 + gearPct('armor') / 100) * emberMult()));
-}
+function killGold(s, boss) { return Math.max(1, Math.ceil(stageHp(s) * tune.goldRatio * (boss ? tune.bossGoldMult : 1) * goldMult())); }
 function embersFor(maxStage) {
   if (maxStage < tune.prestigeMinStage) return 0;
   return Math.floor(Math.pow(maxStage / tune.emberDiv, tune.emberPow));
 }
+function evoNeed(id) { const s = (state.stars[id] || 0) + 1; return { lv: tune.evoLevel * Math.pow(2, s - 1), souls: tune.evoSouls * s, star: s }; }
+function canEvolve(id) { const n = evoNeed(id); return n.star <= 5 && state.lv[id] >= n.lv && state.souls >= n.souls; }
+function enhCost(g) { return Math.ceil(tune.enhCost * Math.pow((g.plus || 0) + 1, tune.enhPow)); }
+function spiritCost(id) { return Math.ceil(tune.spiritCost * Math.pow(Math.max(1, spiritLv(id)), tune.spiritPow)); }
+function slotsOpen() { return Math.min(3, 1 + state.rank); }
+function skillUnlocked(sk) { return state.bestStage >= tune[sk.unlock]; }
 
-// ---- Scenes ------------------------------------------------------------------------------
+// ---- State ---------------------------------------------------------------------------------
 let scene, state;
 const taps = []; // pointer taps in logical coords, handled on the next step
+const KEEP = ['embers', 'rebirths', 'gear', 'stash', 'stones', 'scrolls', 'souls', 'keys', 'keyT', 'rank', 'stars', 'skillLv', 'slots',
+  'spirit', 'spiritLv', 'floor', 'bestStage', 'beatGoal', 'playTime', 'autoSkill', 'daily', 'attend', 'ach', 'stats'];
 function freshRun(keep) {
-  return {
+  const s = {
     t: 0, score: 0, gained: '',
-    gold: 0, stage: 1, kills: 0, maxStage: keep ? keep.maxStage : 1,
-    embers: keep ? keep.embers : 0, rebirths: keep ? keep.rebirths : 0,
-    lv: { knight: 1, archer: 0, cleric: 0, pyro: 0 },
-    gear: keep ? keep.gear : { weapon: null, armor: null }, drop: null,
+    gold: 0, stage: 1, kills: 0, maxStage: 1, bestStage: 1,
+    embers: 0, rebirths: 0,
+    lv: { knight: 1, archer: 0, cleric: 0, pyro: 0 }, stars: { knight: 0, archer: 0, cleric: 0, pyro: 0 },
+    gear: { weapon: null, armor: null }, drop: null, stash: { weapon: [0, 0, 0, 0], armor: [0, 0, 0, 0] },
+    stones: 0, scrolls: 0, souls: 0, keys: tune.keysStart, keyT: 0,
+    rank: 0, skillLv: { slash: 1 }, slots: ['slash', null, null], autoSkill: true, skillCd: {}, selSkill: 'slash',
+    spirit: null, spiritLv: { fire: 0, frost: 0, light: 0 }, floor: 1,
+    buffs: { sanct: 0, cry: 0, gold: 0, burn: 0 }, rain: null, cryTap: 0,
+    mode: 'stage', modeT: 0, modeIdx: 0, modeLoot: null, ret: null, popup: null,
     farming: false, bossT: 0, enemy: null, march: 0, scroll: 0,
     cd: { knight: 0, archer: 0.3, cleric: 0.6, pyro: 0.9 }, anim: { knight: 0, archer: 0, cleric: 0, pyro: 0 },
-    floats: [], shots: [], sparks: [], toast: null, tab: 'party', taps: 0, confirm: 0,
-    beatGoal: keep ? keep.beatGoal : false, playTime: keep ? keep.playTime : 0, saveT: 0, away: null,
+    floats: [], shots: [], sparks: [], fx: [], toast: null, tab: 'party', taps: 0, confirm: 0,
+    beatGoal: false, playTime: 0, saveT: 0, away: null, dayT: 0, questView: 'daily',
+    daily: { day: '', prog: {}, claimed: {}, bonus: false }, attend: { last: '', idx: 0 }, ach: {},
+    stats: { kills: 0, bossKills: 0, taps: 0, ups: 0, casts: 0, dungeons: 0 },
   };
+  if (keep) for (const k of KEEP) if (keep[k] !== undefined) s[k] = keep[k];
+  return s;
 }
 function reset() {
   seed = Number(params.get('seed')) || CONFIG.seed;
   state = freshRun(null);
+  checkDay();
   spawnEnemy(true);
 }
 function toast(msg, color = PAL.ink) { state.toast = { msg, color, t: 2.2 }; }
+function popup(title, lines, color = PAL.torchHi) { state.popup = { title, lines, color, t: 3.2 }; }
+
+// ---- Enemies, by mode: the road, the crypt or the trial ------------------------------------
 function spawnEnemy(instant) {
-  const s = state.stage, boss = isBossStage(s) && !state.farming;
-  const kind = boss ? BOSSES[bossIndex(s) % BOSSES.length] : ENEMIES[Math.floor(rng() * ENEMIES.length)];
-  const hp = enemyHp(s, boss);
+  let kind, hp, boss = true;
+  if (state.mode === 'dungeon') { kind = CRYPT[state.modeIdx]; hp = dungeonHp(state.floor) * (1 + state.modeIdx * 0.5); }
+  else if (state.mode === 'trial') { kind = EXAMINER; hp = trialHp(state.rank + 1); }
+  else {
+    const s = state.stage; boss = isBossStage(s) && !state.farming;
+    kind = boss ? BOSSES[bossIndex(s) % BOSSES.length] : ENEMIES[Math.floor(rng() * ENEMIES.length)];
+    hp = enemyHp(s, boss);
+    if (boss) { state.bossT = tune.bossTime + frostBonus(); toast(`보스 출현: ${kind.name}`, PAL.threat); tone(110, 0.5, 'sawtooth', 0.25); }
+  }
   state.enemy = { kind, boss, hp, max: hp, x: instant ? 0 : 1, flash: 0, dead: 0, lunge: 0 };
-  if (boss) { state.bossT = tune.bossTime; toast(`보스 출현: ${kind.name}`, PAL.threat); tone(110, 0.5, 'sawtooth', 0.25); }
 }
+function targetable() { const e = state.enemy; return e && !e.dead && e.x <= 0.05; }
 function damage(n, crit, color) {
-  const e = state.enemy; if (!e || e.dead || e.x > 0.05) return;
+  const e = state.enemy; if (!targetable()) return;
   e.hp -= n; e.flash = 0.08;
   state.floats.push({ txt: fmt(n), x: enemyX() + (rng() - 0.5) * 30, y: groundY() - (e.boss ? 110 : 62), t: 0, color, big: crit });
   if (e.hp <= 0) killEnemy();
 }
 function killEnemy() {
   const e = state.enemy; e.dead = 0.001;
-  const g = killGold(state.stage, e.boss);
-  state.gold += g; events.push({ type: 'kill', stage: state.stage, boss: e.boss });
   for (let i = 0; i < 8; i++) state.sparks.push({ x: enemyX(), y: groundY() - 30, vx: (rng() - 0.3) * 90, vy: -60 - rng() * 90, t: 0, gold: true });
-  state.floats.push({ txt: `+${fmt(g)}`, x: enemyX(), y: groundY() - 90, t: 0, color: PAL.gold, coin: true });
+  events.push({ type: 'kill', stage: state.stage, boss: e.boss, mode: state.mode });
+  count('kills'); if (e.boss) count('bossKills');
+  if (state.mode === 'dungeon') return killInDungeon(e);
+  if (state.mode === 'trial') return winTrial();
+  const g = killGold(state.stage, e.boss);
+  state.gold += g;
+  state.floats.push({ txt: `+${fmt(g)}`, x: enemyX(), y: groundY() - 90, t: 0, color: PAL.gold });
   tone(e.boss ? 220 : 520, 0.12, 'triangle', 0.2);
   rollDrop(e.boss);
   if (e.boss) {
-    toast(`${e.kind.name} 처치!`, PAL.torchHi); tone(330, 0.4, 'triangle', 0.3);
+    const souls = tune.bossSouls + bossIndex(state.stage);
+    state.souls += souls; state.scrolls += 1; state.keys = Math.min(tune.keysMax, state.keys + 1);
+    toast(`${e.kind.name} 처치! 영혼석 +${souls} · 두루마리 +1 · 열쇠 +1`, PAL.torchHi); tone(330, 0.4, 'triangle', 0.3);
     if (state.stage >= tune.goalStage && !state.beatGoal) { state.beatGoal = true; state.gained = `${e.kind.name}를 쓰러뜨렸다`; resultsPending = 1.2; }
     advanceStage();
   } else {
     state.kills++;
-    if (state.kills >= tune.killsPerStage) {
-      if (state.farming) state.kills = 0; else advanceStage();
-    }
+    if (state.kills >= tune.killsPerStage) { if (state.farming) state.kills = 0; else advanceStage(); }
   }
-  state.score = state.maxStage;
+  state.score = state.bestStage;
 }
 function advanceStage() {
   state.stage++; state.kills = 0;
-  state.maxStage = Math.max(state.maxStage, state.stage); state.score = state.maxStage;
+  state.maxStage = Math.max(state.maxStage, state.stage);
+  const before = state.bestStage; state.bestStage = Math.max(state.bestStage, state.stage); state.score = state.bestStage;
+  for (const sk of SKILLS) if (before < tune[sk.unlock] && state.bestStage >= tune[sk.unlock]) {
+    state.skillLv[sk.id] = state.skillLv[sk.id] || 1;
+    const free = state.slots.findIndex((x, i) => !x && i < slotsOpen()); if (free >= 0) state.slots[free] = sk.id;
+    popup('새 스킬 해금', [`${sk.name}`, sk.desc(1)], PAL.torchHi);
+  }
+  if (zoneIndex(state.stage) !== zoneIndex(state.stage - 1)) popup(`지역: ${zoneOf().name}`, [zoneIndex(state.stage) === 4 ? '마왕성의 문 앞에 섰다' : '마왕성이 조금 더 가까워졌다'], PAL.trimHi);
+  if (state.bestStage === rankReq(state.rank + 1) && state.rank < RANKS.length - 1) toast(`승급 시험을 볼 수 있다 (모험 탭)`, PAL.trimHi);
 }
 function failBoss() {
   toast('보스에게 밀려났다… 파밍 후 재도전', PAL.threat); tone(90, 0.5, 'sawtooth', 0.25);
@@ -264,8 +410,68 @@ function failBoss() {
   state.enemy = null; state.march = tune.marchTime;
 }
 function challengeBoss() {
-  if (!state.farming) return;
+  if (!state.farming || state.mode !== 'stage') return;
   state.farming = false; state.stage++; state.kills = 0; state.enemy = null; state.march = tune.marchTime;
+}
+
+// ---- Dungeon: the crypt under the castle --------------------------------------------------
+function enterDungeon() {
+  if (state.mode !== 'stage' || state.keys <= 0) { tone(140, 0.08); return; }
+  state.keys--; state.ret = { stage: state.stage, kills: state.kills, farming: state.farming };
+  state.mode = 'dungeon'; state.modeIdx = 0; state.modeT = tune.dungeonTime + frostBonus();
+  state.modeLoot = { stones: 0, scrolls: 0 }; state.enemy = null; state.march = 0.6;
+  popup(`지하묘지 B${state.floor}`, ['제한 시간 안에 보스 둘을 쓰러뜨려라'], PAL.soul); tone(98, 0.6, 'sawtooth', 0.2);
+}
+function killInDungeon() {
+  const f = state.floor, st = tune.dungeonStones * f, sc = tune.dungeonScrolls + Math.floor(f / 2);
+  state.modeLoot.stones += st; state.modeLoot.scrolls += sc; state.stones += st; state.scrolls += sc;
+  state.floats.push({ txt: `강화석 +${st}`, x: enemyX(), y: groundY() - 120, t: 0, color: PAL.gem });
+  tone(440, 0.2, 'triangle', 0.25);
+  state.modeIdx++;
+  if (state.modeIdx >= CRYPT.length) { state.floor++; count('dungeons'); leaveMode(true); }
+}
+function leaveMode(won) {
+  const was = state.mode, loot = state.modeLoot;
+  const r = state.ret || { stage: state.stage, kills: 0, farming: false };
+  state.mode = 'stage'; state.stage = r.stage; state.kills = r.kills; state.farming = r.farming;
+  state.enemy = null; state.march = tune.marchTime; state.ret = null;
+  if (was === 'dungeon') popup(won ? `지하묘지 돌파! 다음은 B${state.floor}` : '시간이 다 됐다',
+    [`강화석 +${loot.stones} · 두루마리 +${loot.scrolls}`], won ? PAL.good : PAL.muted);
+}
+
+// ---- Promotion: a duel with the order's examiner -------------------------------------------
+function startTrial() {
+  const next = state.rank + 1;
+  if (state.mode !== 'stage' || next >= RANKS.length || state.bestStage < rankReq(next)) { tone(140, 0.08); return; }
+  state.ret = { stage: state.stage, kills: state.kills, farming: state.farming };
+  state.mode = 'trial'; state.modeT = tune.trialTime + frostBonus(); state.enemy = null; state.march = 0.6;
+  popup('승급 시험', [`${RANKS[next]}의 자격을 증명하라`], PAL.trimHi); tone(196, 0.5, 'square', 0.15);
+}
+function winTrial() {
+  state.rank++;
+  leaveMode(true);
+  const lines = [`모든 피해 x${tune.rankBonus}`];
+  if (state.rank <= 2) lines.push(`스킬 슬롯 ${slotsOpen()}칸`);
+  const sp = SPIRITS.find(s => s.rank === state.rank); if (sp) { state.spiritLv[sp.id] = Math.max(1, spiritLv(sp.id)); if (!state.spirit) state.spirit = sp.id; lines.push(`${sp.name} 합류`); }
+  popup(`승급! ${RANKS[state.rank]}`, lines, PAL.trimHi);
+  for (let k = 0; k < 24; k++) state.sparks.push({ x: heroX('knight'), y: groundY() - 40, vx: (rng() - 0.5) * 200, vy: -100 - rng() * 140, t: 0 });
+  tone(523, 0.2, 'triangle', 0.25); tone(659, 0.3, 'triangle', 0.2); tone(784, 0.5, 'triangle', 0.2);
+}
+
+// ---- Gear: drops, enhance, store and merge -------------------------------------------------
+function makeItem(slot, r) {
+  const pct = Math.max(1, Math.round(state.bestStage * tune[RARITY[r].k] * (0.8 + 0.4 * rng())));
+  return { slot, r, pct, plus: 0, name: GEAR_NAMES[slot][r] };
+}
+function offerItem(item, why) {
+  if (!state.gear[item.slot]) { state.gear[item.slot] = item; toast(`${RARITY[item.r].name} ${item.name} 장착!`, RARITY[item.r].color); return; }
+  if (state.drop) { // keep the better offer, store the other
+    const worse = item.pct - gearPct(item.slot) > state.drop.pct - gearPct(state.drop.slot) ? state.drop : item;
+    if (worse === state.drop) state.drop = item;
+    state.stash[worse.slot][worse.r]++;
+    if (worse === item) return;
+  } else state.drop = item;
+  toast(`${RARITY[item.r].name} 장비 ${why} (장비 탭)`, RARITY[item.r].color); tone(880, 0.15, 'square', 0.12);
 }
 function rollDrop(boss) {
   if (!boss && rng() >= tune.dropChance) return;
@@ -273,79 +479,178 @@ function rollDrop(boss) {
   if (roll < tune.legendChance) r = 3; else if (roll < tune.legendChance + tune.epicChance) r = 2;
   else if (roll < tune.legendChance + tune.epicChance + tune.rareChance) r = 1;
   if (boss) r = Math.max(r, 1);
-  const slot = rng() < 0.5 ? 'weapon' : 'armor';
-  const pct = Math.max(1, Math.round(state.stage * tune[RARITY[r].k] * (0.8 + 0.4 * rng())));
-  const item = { slot, r, pct, name: GEAR_NAMES[slot][r] };
-  if (!state.gear[slot]) { state.gear[slot] = item; toast(`${RARITY[r].name} ${item.name} 장착!`, RARITY[r].color); return; }
-  if (!state.drop || item.pct - gearPct(item.slot) > state.drop.pct - gearPct(state.drop.slot)) {
-    state.drop = item; toast(`${RARITY[r].name} 장비 획득 (장비 탭)`, RARITY[r].color);
-  }
-  tone(880, 0.15, 'square', 0.12);
+  offerItem(makeItem(rng() < 0.5 ? 'weapon' : 'armor', r), '획득');
 }
+function equipDrop() {
+  const d = state.drop; if (!d) return;
+  const old = state.gear[d.slot]; if (old) state.stash[old.slot][old.r]++;
+  state.gear[d.slot] = d; state.drop = null; tone(700, 0.15, 'triangle', 0.2);
+}
+function storeDrop() { const d = state.drop; if (!d) return; state.stash[d.slot][d.r]++; state.drop = null; tone(500, 0.08, 'square', 0.1); }
+function enhance(slot) {
+  const g = state.gear[slot]; if (!g || g.plus >= tune.enhMax) return;
+  const c = enhCost(g); if (state.stones < c) { tone(140, 0.08); return; }
+  state.stones -= c; g.plus++;
+  toast(`${g.name} +${g.plus}!`, RARITY[g.r].color); tone(880 + g.plus * 30, 0.12, 'triangle', 0.2);
+  for (let k = 0; k < 8; k++) state.sparks.push({ x: 90 + (slot === 'armor' ? 180 : 0), y: PANEL_Y + 40, vx: (rng() - 0.5) * 120, vy: -60 - rng() * 80, t: 0 });
+}
+function mergeTarget(slot) { const st = state.stash[slot]; for (let r = 0; r < 3; r++) if (st[r] >= tune.mergeNeed) return r; return -1; }
+function merge(slot) {
+  const r = mergeTarget(slot); if (r < 0) { tone(140, 0.08); return; }
+  state.stash[slot][r] -= tune.mergeNeed;
+  tone(660, 0.1, 'triangle', 0.2); tone(990, 0.2, 'triangle', 0.2);
+  offerItem(makeItem(slot, r + 1), '합성');
+}
+
+// ---- Party: hire, level, evolve -------------------------------------------------------------
 function buyHero(i) {
   const h = HEROES[i]; if (!h) return;
   const c = heroCost(h);
   if (state.gold < c) { tone(140, 0.08, 'square', 0.1); return; }
-  state.gold -= c; const before = state.lv[h.id]; state.lv[h.id]++;
+  state.gold -= c; const before = state.lv[h.id]; state.lv[h.id]++; count('ups');
   events.push({ type: 'buy', hero: h.id, lv: state.lv[h.id] });
   if (before === 0) { toast(`${h.name} 합류!`, PAL.torchHi); tone(392, 0.3, 'triangle', 0.25); }
   else tone(660, 0.07, 'square', 0.12);
   if (h.id === 'knight' && state.lv.knight === tune.autoUnlockLevel) toast('기사가 스스로 싸우기 시작한다', PAL.torchHi);
   if (MILESTONES.includes(state.lv[h.id])) {
     toast(`${h.name} Lv${state.lv[h.id]}: 피해 x${tune.milestoneMult}!`, PAL.torch);
-    for (let k = 0; k < 14; k++) state.sparks.push({ x: heroX(h.id), y: groundY() - 30, vx: (rng() - 0.5) * 160, vy: -80 - rng() * 120, t: 0 });
+    burst(heroX(h.id), groundY() - 30, 14);
     tone(523, 0.12, 'triangle', 0.2); tone(784, 0.25, 'triangle', 0.2);
   }
 }
-function equipDrop() {
-  const d = state.drop; if (!d) return;
-  state.gear[d.slot] = d; state.drop = null; tone(700, 0.15, 'triangle', 0.2);
+function evolve(i) {
+  const h = HEROES[i]; if (!h || !canEvolve(h.id)) { tone(140, 0.08); return; }
+  const n = evoNeed(h.id); state.souls -= n.souls; state.stars[h.id] = n.star;
+  popup(`${h.name} 진화!`, [`별 ${n.star}개 · 피해 x${fmt(starMult(h.id))}`], PAL.soul);
+  burst(heroX(h.id), groundY() - 30, 20); tone(587, 0.2, 'triangle', 0.25); tone(880, 0.4, 'triangle', 0.2);
+}
+function burst(x, y, n) { for (let k = 0; k < n; k++) state.sparks.push({ x, y, vx: (rng() - 0.5) * 160, vy: -80 - rng() * 120, t: 0 }); }
+
+// ---- Skills --------------------------------------------------------------------------------
+function equipSkill(id) {
+  const sk = SKILLS.find(s => s.id === id); if (!sk || !skillUnlocked(sk)) return;
+  const at = state.slots.indexOf(id);
+  if (at >= 0) { state.slots[at] = null; return; }
+  let free = state.slots.findIndex((x, i) => !x && i < slotsOpen());
+  if (free < 0) free = slotsOpen() - 1;
+  state.slots[free] = id; tone(600, 0.06, 'square', 0.1);
+}
+function upgradeSkill(id) {
+  const lv = state.skillLv[id] || 0; if (!lv) return;
+  if (state.scrolls < lv) { tone(140, 0.08); return; }
+  state.scrolls -= lv; state.skillLv[id] = lv + 1; tone(760, 0.12, 'triangle', 0.2);
+  toast(`${SKILLS.find(s => s.id === id).name} Lv${lv + 1}`, PAL.scroll);
+}
+function castSkill(id) {
+  const sk = SKILLS.find(s => s.id === id); if (!sk || (state.skillCd[id] || 0) > 0) return false;
+  const needsTarget = id === 'slash' || id === 'rain' || id === 'storm';
+  if (needsTarget && !targetable()) return false;
+  const k = skillK(id), dps = Math.max(totalDps(), tapDamage());
+  state.skillCd[id] = tune[sk.cd]; count('casts');
+  events.push({ type: 'skill', id });
+  if (id === 'slash') { damage(dps * tune.slashPower * k + tapDamage() * 5, true, PAL.torchHi); state.fx.push({ kind: 'bigslash', t: 0 }); tone(220, 0.25, 'sawtooth', 0.2); }
+  if (id === 'rain') { state.rain = { n: 6, t: 0 }; tone(1300, 0.15, 'triangle', 0.1); }
+  if (id === 'sanct') { state.buffs.sanct = tune.sanctTime; state.fx.push({ kind: 'sanct', t: 0 }); tone(660, 0.6, 'sine', 0.15); }
+  if (id === 'storm') { damage(dps * tune.stormPower * k, true, PAL.ember); state.buffs.burn = 3; state.fx.push({ kind: 'storm', t: 0 }); tone(80, 0.6, 'sawtooth', 0.25); }
+  if (id === 'cry') { state.buffs.cry = tune.cryTime; state.fx.push({ kind: 'cry', t: 0 }); tone(150, 0.4, 'square', 0.2); }
+  if (id === 'gold') { state.buffs.gold = tune.goldTime; state.fx.push({ kind: 'gold', t: 0 }); tone(1046, 0.3, 'triangle', 0.15); }
+  return true;
+}
+function upgradeSpirit(id) {
+  const sp = SPIRITS.find(s => s.id === id); if (!sp || !spiritLv(id)) return;
+  const c = spiritCost(id); if (state.stones < c) { tone(140, 0.08); return; }
+  state.stones -= c; state.spiritLv[id]++; tone(900, 0.15, 'triangle', 0.2); toast(`${sp.name} Lv${spiritLv(id)}`, PAL.gem);
 }
 function rebirth() {
-  const gain = embersFor(state.maxStage); if (gain <= 0) return;
+  const gain = embersFor(state.maxStage); if (gain <= 0 || state.mode !== 'stage') return;
   if (state.confirm <= 0) { state.confirm = 3; tone(300, 0.1); return; }
-  const keep = { maxStage: 1, embers: state.embers + gain, rebirths: state.rebirths + 1, gear: state.gear, beatGoal: state.beatGoal, playTime: state.playTime };
+  const keep = {}; for (const k of KEEP) keep[k] = state[k];
+  keep.embers = state.embers + gain; keep.rebirths = state.rebirths + 1;
   events.push({ type: 'rebirth', embers: keep.embers });
-  state = freshRun(keep); state.maxStage = 1;
+  state = freshRun(keep);
   spawnEnemy(true);
-  toast(`환생! 잿불 ${keep.embers}개 · 모든 피해·금화 x${fmt(emberMult())}`, PAL.ember);
+  popup('환생!', [`잿불 ${keep.embers}개 · 모든 피해·금화 x${fmt(emberMult())}`, '서열·별·장비·스킬·정령은 그대로'], PAL.ember);
   tone(196, 0.6, 'triangle', 0.3); tone(392, 0.8, 'triangle', 0.2);
 }
 
 // ---- Layout --------------------------------------------------------------------------------
-const HUD_H = 40, FIELD_B = 330, PANEL_Y = 352, TAB_Y = 596;
+const HUD_H = 40, FIELD_B = 330, PANEL_Y = 358, TAB_Y = 584;
 function groundY() { return 300; }
 function heroOrder() { return HEROES.filter(h => state.lv[h.id] > 0).map(h => h.id); }
-function heroX(id) { const i = heroOrder().indexOf(id); return 168 - i * 44; }
-function enemyX() { const e = state.enemy; const base = e && e.boss ? 278 : 272; return base + (e ? e.x * 120 : 0); }
+function heroX(id) { const i = heroOrder().indexOf(id); return i === 0 ? 170 : 168 - 12 - i * 42; }
+function enemyX() { const e = state.enemy; const base = e && e.boss ? 280 : 272; return base + (e ? e.x * 120 : 0); }
+const TABS = [['party', '파티', 'helm'], ['skill', '스킬', 'book'], ['gear', '장비', 'sword'], ['adv', '모험', 'door'], ['quest', '임무', 'scroll'], ['rebirth', '환생', 'flame']];
 function buttons() {
   const b = [];
-  b.push({ id: 'pause', x: W - 36, y: 6, w: 28, h: 28 });
-  b.push({ id: 'mute', x: W - 70, y: 6, w: 28, h: 28 });
-  if (state.farming) b.push({ id: 'boss', x: W - 112, y: HUD_H + 8, w: 104, h: 30 });
-  [['party', '파티'], ['gear', '장비'], ['rebirth', '환생']].forEach(([id, label], i) =>
-    b.push({ id: 'tab:' + id, label, x: i * (W / 3), y: TAB_Y, w: W / 3, h: H - TAB_Y }));
-  if (state.tab === 'party') HEROES.forEach((h, i) => b.push({ id: 'buy:' + i, x: W - 120, y: PANEL_Y + 6 + i * 60 + 8, w: 112, h: 44 }));
-  if (state.tab === 'gear' && state.drop) {
-    b.push({ id: 'equip', x: 24, y: PANEL_Y + 194, w: 150, h: 38 });
-    b.push({ id: 'discard', x: W - 174, y: PANEL_Y + 194, w: 150, h: 38 });
+  b.push({ id: 'pause', x: W - 34, y: 6, w: 28, h: 28 });
+  b.push({ id: 'mute', x: W - 66, y: 6, w: 28, h: 28 });
+  for (let i = 0; i < 3; i++) b.push({ id: 'cast:' + i, x: 8 + i * 42, y: HUD_H + 6, w: 38, h: 38 });
+  b.push({ id: 'auto', x: 134, y: HUD_H + 12, w: 40, h: 26 });
+  if (state.farming && state.mode === 'stage') b.push({ id: 'boss', x: W - 112, y: HUD_H + 8, w: 104, h: 32 });
+  if (state.mode !== 'stage') b.push({ id: 'leave', x: W - 82, y: HUD_H + 8, w: 74, h: 30 });
+  TABS.forEach(([id, label, icon], i) => b.push({ id: 'tab:' + id, label, icon, x: i * 60, y: TAB_Y, w: 60, h: H - TAB_Y }));
+  const P = PANEL_Y;
+  if (state.tab === 'party') HEROES.forEach((h, i) => {
+    const y = P + 4 + i * 56;
+    b.push({ id: 'buy:' + i, x: W - 104, y: y + 7, w: 96, h: 42 });
+    if (state.lv[h.id] >= evoNeed(h.id).lv && (state.stars[h.id] || 0) < 5) b.push({ id: 'evo:' + i, x: W - 164, y: y + 7, w: 56, h: 42 });
+  });
+  if (state.tab === 'skill') {
+    SKILLS.forEach((sk, i) => b.push({ id: 'sel:' + sk.id, x: 8 + (i % 3) * 116, y: P + 6 + Math.floor(i / 3) * 58, w: 112, h: 54 }));
+    b.push({ id: 'equipsk', x: 14, y: P + 180, w: 160, h: 38 });
+    b.push({ id: 'upsk', x: 186, y: P + 180, w: 160, h: 38 });
   }
-  if (state.tab === 'rebirth') b.push({ id: 'rebirth', x: 40, y: PANEL_Y + 176, w: W - 80, h: 48 });
+  if (state.tab === 'gear') {
+    ['weapon', 'armor'].forEach((s, i) => b.push({ id: 'enh:' + s, x: 14 + i * 174, y: P + 54, w: 158, h: 30 }));
+    if (state.drop) { b.push({ id: 'equip', x: W - 152, y: P + 104, w: 68, h: 38 }); b.push({ id: 'store', x: W - 80, y: P + 104, w: 68, h: 38 }); }
+    ['weapon', 'armor'].forEach((s, i) => b.push({ id: 'merge:' + s, x: W - 122, y: P + 162 + i * 30, w: 110, h: 28 }));
+  }
+  if (state.tab === 'adv') {
+    b.push({ id: 'dungeon', x: W - 98, y: P + 14, w: 88, h: 44 });
+    b.push({ id: 'trial', x: W - 98, y: P + 86, w: 88, h: 44 });
+    SPIRITS.forEach((sp, i) => { b.push({ id: 'spirit:' + sp.id, x: 8 + i * 116, y: P + 146, w: 112, h: 50 }); b.push({ id: 'spup:' + sp.id, x: 12 + i * 116, y: P + 196, w: 104, h: 26 }); });
+  }
+  if (state.tab === 'rebirth') b.push({ id: 'rebirth', x: 40, y: P + 166, w: W - 80, h: 48 });
+  if (state.tab === 'quest') {
+    [['daily', '일일 임무'], ['ach', '업적'], ['attend', '출석']].forEach(([v, l], i) => b.push({ id: 'qv:' + v, label: l, x: 8 + i * 116, y: P + 6, w: 112, h: 24 }));
+    if (state.questView === 'daily') { DAILY.forEach((q, i) => b.push({ id: 'qd:' + i, x: W - 80, y: P + 36 + i * 31, w: 70, h: 28 })); b.push({ id: 'qbonus', x: W - 80, y: P + 191, w: 70, h: 28 }); }
+    if (state.questView === 'ach') ACH.forEach((a, i) => b.push({ id: 'qa:' + a.id, x: W - 80, y: P + 36 + i * 31, w: 70, h: 28 }));
+    if (state.questView === 'attend') b.push({ id: 'qatt', x: 60, y: P + 186, w: W - 120, h: 34 });
+  }
   return b;
 }
-function hitButton(x, y) { return buttons().find(b => x >= b.x && x <= b.x + b.w && y >= b.y && y <= b.y + b.h); }
+function hitButton(x, y) { const bs = buttons(); for (let i = bs.length - 1; i >= 0; i--) { const b = bs[i]; if (x >= b.x && x <= b.x + b.w && y >= b.y && y <= b.y + b.h) return b; } return null; }
 function press(id) {
-  if (id === 'pause') { scene = 'pause'; return; }
-  if (id === 'mute') { setMuted(!muted); return; }
-  if (id === 'boss') { challengeBoss(); return; }
-  if (id.startsWith('tab:')) { state.tab = id.slice(4); tone(400, 0.04, 'square', 0.08); return; }
-  if (id.startsWith('buy:')) { buyHero(Number(id.slice(4))); return; }
-  if (id === 'equip') { equipDrop(); return; }
-  if (id === 'discard') { state.drop = null; return; }
-  if (id === 'rebirth') { rebirth(); }
+  const [k, v] = id.split(':');
+  if (k === 'pause') { scene = 'pause'; return; }
+  if (k === 'mute') { setMuted(!muted); return; }
+  if (k === 'boss') { challengeBoss(); return; }
+  if (k === 'leave') { leaveMode(false); return; }
+  if (k === 'auto') { state.autoSkill = !state.autoSkill; tone(500, 0.05); return; }
+  if (k === 'cast') { const id = state.slots[Number(v)]; if (id) castSkill(id); return; }
+  if (k === 'tab') { state.tab = v; tone(400, 0.04, 'square', 0.08); return; }
+  if (k === 'buy') { buyHero(Number(v)); return; }
+  if (k === 'evo') { evolve(Number(v)); return; }
+  if (k === 'sel') { state.selSkill = v; tone(500, 0.03); return; }
+  if (k === 'equipsk') { equipSkill(state.selSkill); return; }
+  if (k === 'upsk') { upgradeSkill(state.selSkill); return; }
+  if (k === 'enh') { enhance(v); return; }
+  if (k === 'equip') { equipDrop(); return; }
+  if (k === 'store') { storeDrop(); return; }
+  if (k === 'merge') { merge(v); return; }
+  if (k === 'dungeon') { enterDungeon(); return; }
+  if (k === 'trial') { startTrial(); return; }
+  if (k === 'spirit') { if (spiritLv(v)) { state.spirit = v; tone(800, 0.08, 'triangle', 0.15); } return; }
+  if (k === 'spup') { upgradeSpirit(v); return; }
+  if (k === 'rebirth') { rebirth(); return; }
+  if (k === 'qv') { state.questView = v; tone(500, 0.03); return; }
+  if (k === 'qd') { claimDaily(Number(v)); return; }
+  if (k === 'qbonus') { claimDailyBonus(); return; }
+  if (k === 'qa') { claimAch(v); return; }
+  if (k === 'qatt') { claimAttend(); }
 }
-function tapAttack(x, y) {
-  state.taps++;
+function tapAttack(x, y, auto) {
+  state.taps++; if (!auto) count('taps');
   const dmg = tapDamage(); const crit = rng() < 0.08;
   damage(crit ? dmg * 3 : dmg, crit, crit ? PAL.torchHi : PAL.ink);
   state.anim.knight = 0.18; tone(crit ? 980 : 760 + rng() * 80, 0.05, 'square', 0.12);
@@ -353,10 +658,11 @@ function tapAttack(x, y) {
 }
 
 // ---- Saving and away earnings --------------------------------------------------------------
-const SAVE_KEY = 'ashen-vanguard-save-v1';
+const SAVE_KEY = 'ashen-vanguard-save-v2';
 function save() {
   try {
-    const s = { ...state, floats: [], shots: [], sparks: [], toast: null, enemy: null, away: null, savedAt: Date.now() };
+    const s = { ...state, floats: [], shots: [], sparks: [], fx: [], toast: null, popup: null, enemy: null, away: null, savedAt: Date.now() };
+    if (s.mode !== 'stage') { Object.assign(s, s.ret || {}); s.mode = 'stage'; s.ret = null; }
     localStorage.setItem(SAVE_KEY, JSON.stringify(s));
   } catch (e) { /* private mode: play on without saving */ }
 }
@@ -365,100 +671,195 @@ function loadSave() {
 }
 function continueSave(s) {
   seed = Number(params.get('seed')) || CONFIG.seed;
-  state = Object.assign(freshRun(null), s, { floats: [], shots: [], sparks: [], toast: null, enemy: null, away: null });
+  state = Object.assign(freshRun(null), s, { floats: [], shots: [], sparks: [], fx: [], toast: null, popup: null, enemy: null, away: null });
+  state.buffs = { sanct: 0, cry: 0, gold: 0, burn: 0 }; state.skillCd = {};
   spawnEnemy(true);
   const gone = Math.min((Date.now() - (s.savedAt || Date.now())) / 1000, tune.offlineCapHours * 3600);
   if (gone > 60) {
     const rate = totalDps() / Math.max(1, enemyHp(state.stage, false)) * killGold(state.stage, false) * tune.offlineRate;
-    const g = Math.floor(rate * gone);
-    if (g > 0) state.away = { secs: gone, gold: g };
+    const hrs = gone / 3600;
+    state.keys = Math.min(tune.keysMax, state.keys + Math.floor(gone / tune.keyRegen));
+    state.away = { secs: gone, gold: Math.floor(rate * gone), stones: Math.floor(tune.chestStones * state.floor * hrs),
+      scrolls: Math.floor(tune.chestScrolls * hrs), souls: Math.floor(tune.chestSouls * hrs) };
   }
+  checkDay();
 }
 let hasSave = !!loadSave();
 
-// ---- Background: the ruined road (deterministic, not gameplay rng) -------------------------
+// ---- Background: the road from the meadow to the demon castle (deterministic, not gameplay rng) ----
 function hash(i) { const x = Math.sin(i * 127.1 + 311.7) * 43758.5453; return x - Math.floor(x); }
+const ZONES = [
+  { key: 'zoneForest', name: '푸른 초원', sky: ['#5fa8e0', '#6fb4e6', '#82c0ea', '#96cbee', '#a9d6f0', '#bfe0f0', '#d6e8ea', '#e8eedc', '#f2ecc8'],
+    far: '#7fae8a', hill: '#5c9a4c', hill2: '#4a8a3e', ground: '#7a5a38', groundHi: '#a07a4a', groundDk: '#5a4028', grass: '#5aa64a', castle: 0.28, castleC: '#6a7a9a', night: 0, mote: '#ffffffcc', mote2: '#ffb6d0cc' },
+  { key: 'zoneVillage', name: '어둠의 숲', sky: ['#2c4a5a', '#30525e', '#365a62', '#3c6266', '#446a68', '#4c7268', '#567a68', '#628266', '#6e8a64'],
+    far: '#2f4a44', hill: '#24403a', hill2: '#1c342e', ground: '#4a3a2a', groundHi: '#5e4a34', groundDk: '#32281c', grass: '#3a6a34', castle: 0.42, castleC: '#2a3440', night: 0.35, mote: '#d8ff8acc', mote2: '#a8e070cc' },
+  { key: 'zoneWaste', name: '무너진 마을', sky: ['#121319', '#16161e', '#1a1922', '#1f1c27', '#25202c', '#2b2431', '#352731', '#43292c', '#562c26'],
+    far: '#22232d', hill: PAL.ruin, hill2: '#17181f', ground: PAL.road, groundHi: PAL.roadHi, groundDk: PAL.roadDark, grass: '#2e3a2a', castle: 0.6, castleC: '#151520', night: 1, mote: 'rgba(255,120,50,0.55)', mote2: 'rgba(255,200,120,0.6)' },
+  { key: 'zoneCastle', name: '잿빛 황야', sky: ['#1a0a0a', '#2a0e0c', '#3a120e', '#4e1810', '#621e12', '#7a2614', '#922e14', '#aa3a16', '#c24a18'],
+    far: '#3a1a14', hill: '#2a1410', hill2: '#1e0e0a', ground: '#2e2422', groundHi: '#463632', groundDk: '#1c1414', grass: '#3a2a1e', castle: 0.85, castleC: '#1a0c0c', night: 0.8, mote: 'rgba(255,110,40,0.8)', mote2: 'rgba(255,190,90,0.8)', lava: true },
+  { key: null, name: '마왕성', sky: ['#0c0614', '#120818', '#180a1e', '#1e0c24', '#260e2a', '#2e1030', '#381236', '#44143a', '#52163c'],
+    far: '#1e0e26', hill: '#160a1e', hill2: '#100616', ground: '#2a2230', groundHi: '#3e3446', groundDk: '#18141e', grass: '#2a1a2e', castle: 1.6, castleC: '#0e0812', night: 1, mote: 'rgba(200,120,255,0.6)', mote2: 'rgba(255,90,120,0.6)', bolts: true },
+];
+function zoneIndex(stage) { let z = 0; ['zoneForest', 'zoneVillage', 'zoneWaste', 'zoneCastle'].forEach((k, i) => { if (stage >= tune[k]) z = i + 1; }); return z; }
+function zoneOf() { return ZONES[zoneIndex(state.stage)]; }
+function demonCastle(cx, base, k, c, lit) { // the demon castle on the horizon, k = how near
+  const u = v => Math.round(v * k);
+  const towers = [[-60, 50, 12], [-38, 78, 14], [-14, 110, 18], [14, 96, 16], [40, 70, 14], [62, 46, 10]];
+  rect(cx + u(-70), base - u(36), u(140), u(36), c);
+  for (const [dx, h, w] of towers) {
+    const x = cx + u(dx) - u(w / 2), top = base - u(h);
+    rect(x, top, u(w), u(h), c);
+    for (let i = 0; i < u(w / 2) + 1; i++) rect(x + i, top - (u(w / 2) - i) * 1.4, u(w) - i * 2, 1.5, c); // a stepped spire
+    if (lit && k > 0.5) { rect(x + u(w / 2) - 1, top + u(h * 0.3), Math.max(2, u(3)), Math.max(2, u(4)), '#ff3a3a'); }
+  }
+  if (lit) rect(cx - u(8), base - u(18), u(16), u(18), '#2a0608');
+}
 function drawBackground(scroll) {
-  const top = HUD_H, gy = groundY();
-  // sky in stepped bands, no smooth gradient
-  const bands = ['#121319', '#16161e', '#1a1922', '#1f1c27', '#25202c', '#2b2431', '#352731', '#43292c', '#562c26'];
-  const bh = Math.ceil((gy - top) / bands.length);
-  bands.forEach((c, i) => rect(0, top + i * bh, W, bh, c));
-  // pale moon: a pixel disc with a stepped halo
-  disc(70, top + 46, 30, 'rgba(220,210,190,0.05)'); disc(70, top + 46, 24, 'rgba(220,210,190,0.07)');
-  disc(70, top + 46, 18, '#5d5a5e'); disc(66, top + 42, 13, '#6c6a6c'); rect(74, top + 50, 4, 3, '#545256'); rect(62, top + 40, 3, 2, '#5d5a5e');
-  // far mountains, column by column
-  const moff = Math.floor(scroll * 0.08);
+  const top = HUD_H, gy = groundY(), crypt = state.mode === 'dungeon', trial = state.mode === 'trial';
+  if (crypt || trial) return drawModeBackground(scroll, crypt);
+  const Z = zoneOf(), zi = zoneIndex(state.stage), t = state.t;
+  const bh = Math.ceil((gy - top) / Z.sky.length);
+  Z.sky.forEach((c, i) => rect(0, top + i * bh, W, bh, c));
+  // sun, moon or the red sun of the wastes
+  if (zi === 0) { disc(70, top + 52, 26, 'rgba(255,250,210,0.25)'); disc(70, top + 52, 18, '#fff4c0'); disc(66, top + 48, 12, '#fffbe6'); }
+  if (zi === 1) { disc(290, top + 70, 22, 'rgba(230,255,220,0.15)'); disc(290, top + 70, 14, '#e8f0d0'); }
+  if (zi === 2) { disc(300, top + 104, 22, 'rgba(220,210,190,0.07)'); disc(300, top + 104, 16, '#5d5a5e'); disc(296, top + 100, 11, '#6c6a6c'); }
+  if (zi === 3) { disc(250, top + 150, 40, 'rgba(255,90,40,0.2)'); disc(250, top + 150, 30, '#d8461c'); disc(246, top + 146, 22, '#ee6a2a'); }
+  if (zi === 4) { disc(80, top + 60, 20, 'rgba(255,60,80,0.15)'); disc(80, top + 60, 14, '#9a1a30'); disc(77, top + 57, 9, '#c02a40'); }
+  if (zi === 0) for (let i = 0; i < 4; i++) { // drifting clouds
+    const x = Math.round(((hash(i) * 500 - scroll * 0.04 - t * 4) % 460 + 460) % 460) - 60, y = top + 30 + i * 22;
+    rect(x, y, 50, 8, '#ffffffcc'); rect(x + 8, y - 6, 26, 6, '#ffffffcc'); rect(x + 4, y + 8, 40, 3, '#e6f0f8cc');
+  }
+  // far hills, with the demon castle growing on the horizon
+  const moff = Math.floor(scroll * 0.06);
   for (let x = 0; x < W; x += 2) {
-    const u = (x + moff) / 20, i = Math.floor(u), f = u - i;
-    const h = 70 + (hash(i) * (1 - f) + hash(i + 1) * f) * 70;
-    rect(x, Math.round(gy - h), 2, Math.round(h), PAL.mount);
+    const u = (x + moff) / 24, i = Math.floor(u), f = u - i;
+    const h = 46 + (hash(i) * (1 - f) + hash(i + 1) * f) * 46;
+    rect(x, Math.round(gy - 26 - h), 2, Math.round(h + 26), Z.far);
   }
-  // ruined towers
-  const off = Math.floor(scroll * 0.25);
-  for (let k = -1; k < 5; k++) {
-    const i = Math.floor(off / 110) + k, x = i * 110 - off + 20 + hash(i + 9) * 40;
-    const h = 60 + hash(i + 3) * 70, w = 26 + hash(i + 5) * 22;
-    ctx.fillStyle = PAL.ruin; rect(x, gy - 20 - h, w, h + 20, PAL.ruin);
-    for (let c = 0; c < w; c += 8) if (hash(i * 7 + c) > 0.35) rect(x + c, gy - 26 - h, 5, 6, PAL.ruin);
-    rect(x + w / 2 - 3, gy - h + 4, 6, 10, hash(i + 2) > 0.5 ? '#3a2318' : '#0d0d11');
-    rect(x, gy - 20 - h, 2, h + 20, PAL.ruinHi);
+  demonCastle(zi === 4 ? 230 : 270, gy - 52, Z.castle, Z.castleC, zi >= 2);
+  // near hills
+  const hoff = Math.floor(scroll * 0.18);
+  for (let x = 0; x < W; x += 2) {
+    const h = 30 + Math.sin((x + hoff) / 38) * 12 + Math.sin((x + hoff) / 15) * 4;
+    rect(x, Math.round(gy - h), 2, Math.round(h), Z.hill);
   }
-  // dead trees
-  const toff = Math.floor(scroll * 0.55);
-  for (let k = -1; k < 4; k++) {
-    const i = Math.floor(toff / 140) + k, x = Math.round(i * 140 - toff + hash(i + 21) * 80);
-    rect(x - 2, gy - 70, 5, 66, PAL.tree); rect(x - 4, gy - 8, 9, 4, PAL.tree);
-    pixelLine(x, gy - 46, x - 18, gy - 64, 3, PAL.tree); pixelLine(x - 18, gy - 64, x - 24, gy - 82, 2, PAL.tree);
-    pixelLine(x + 1, gy - 58, x + 20, gy - 80, 3, PAL.tree); pixelLine(x + 12, gy - 70, x + 24, gy - 72, 2, PAL.tree);
+  // the zone's own middle layer
+  const off = Math.floor(scroll * 0.5);
+  for (let k = -1; k < 6; k++) {
+    const i = Math.floor(off / 70) + k, x = Math.round(i * 70 - off + hash(i + 9) * 30);
+    if (zi === 0) { // bushes, a fence, flowers
+      disc(x, gy - 12, 10, Z.hill2); disc(x + 10, gy - 10, 8, Z.hill2); rect(x - 2, gy - 18, 4, 2, '#7cc06a');
+      if (hash(i) > 0.4) { rect(x + 24, gy - 22, 3, 18, '#8a6a44'); rect(x + 20, gy - 18, 30, 2, '#8a6a44'); rect(x + 44, gy - 22, 3, 18, '#8a6a44'); }
+    } else if (zi === 1) { // pines in two shades
+      for (const [dx, hh, c] of [[0, 70 + hash(i) * 30, Z.hill2], [26, 50 + hash(i + 2) * 20, '#162a24']]) {
+        const px = x + dx; rect(px - 2, gy - 12, 4, 12, '#2a1e14');
+        for (let r = 0; r < hh; r += 2) { const w = Math.round((r / hh) * 14 + 2); rect(px - w, gy - 10 - hh + r, w * 2, 2, c); }
+      }
+    } else if (zi === 2) { // ruined houses and dead trees
+      const h = 40 + hash(i + 3) * 30, w = 30 + hash(i + 5) * 16;
+      rect(x, gy - h, w, h, PAL.ruin); for (let c = 0; c < w; c += 6) rect(x + c, gy - h - (hash(i * 3 + c) * 10), 5, 10, PAL.ruin);
+      rect(x + w / 2 - 3, gy - h + 10, 6, 8, hash(i + 2) > 0.5 ? '#3a2318' : '#0d0d11');
+      if (hash(i + 7) > 0.5) { rect(x + w + 12, gy - 60, 4, 56, PAL.tree); pixelLine(x + w + 14, gy - 40, x + w, gy - 58, 2, PAL.tree); pixelLine(x + w + 14, gy - 50, x + w + 30, gy - 66, 2, PAL.tree); }
+    } else if (zi === 3) { // rock spires with glowing cracks
+      const h = 30 + hash(i + 3) * 50, w = 14 + hash(i + 5) * 10;
+      for (let r = 0; r < h; r += 2) rect(x - w / 2 + (r / h) * w / 3, gy - h + r, w * (0.4 + 0.6 * r / h), 2, Z.hill2);
+      pixelLine(x, gy - h * 0.6, x + 3, gy - 4, 1, '#ff7a2a');
+    } else { // castle wall with banners and torches
+      rect(x - 30, gy - 70, 70, 70, '#1a1020'); for (let c = -30; c < 40; c += 10) rect(x + c, gy - 78, 6, 8, '#1a1020');
+      rect(x - 30, gy - 70, 70, 2, '#2a1a32');
+      rect(x - 4, gy - 64, 10, 26, '#6a1020'); rect(x - 4, gy - 40, 4, 4, '#6a1020'); rect(x + 2, gy - 40, 4, 4, '#6a1020'); rect(x - 2, gy - 58, 6, 6, '#c8963e');
+      const fl = Math.floor(t * 10 + i) % 2; rect(x + 26, gy - 50, 3, 10, '#3a2a1a'); rect(x + 25, gy - 56 - fl, 5, 6, '#ff9a3c'); rect(x + 26, gy - 58 - fl, 3, 3, '#ffd27a');
+    }
   }
-  // fog bands, dithered at the edges
-  rect(0, gy - 32, W, 16, PAL.fog); rect(0, gy - 20, W, 8, PAL.fog);
-  for (let x = (Math.floor(scroll * 0.3) % 4); x < W; x += 4) { rect(W - x, gy - 34, 2, 2, PAL.fog); rect(x, gy - 14, 2, 2, PAL.fog); }
-  // road
-  rect(0, gy - 6, W, FIELD_B - gy + 6, PAL.road);
+  if (zi === 4 && Z.bolts && Math.floor(t * 0.7) % 4 === 0 && (t * 0.7) % 1 < 0.08) { // lightning over the castle
+    ctx.save(); ctx.globalAlpha = 0.25; rect(0, top, W, gy - top, '#d8c0ff'); ctx.restore();
+    let x = 200 + hash(Math.floor(t)) * 100, y = top; while (y < gy - 120) { const nx = x + (hash(y + x) - 0.5) * 24; pixelLine(x, y, nx, y + 14, 2, '#f0e0ff'); x = nx; y += 14; }
+  }
+  // fog
+  if (Z.night > 0) { const fog = `rgba(${zi === 3 ? '160,80,60' : zi === 4 ? '140,90,180' : '120,120,140'},${0.08 + Z.night * 0.04})`; rect(0, gy - 30, W, 14, fog); rect(0, gy - 18, W, 8, fog); }
+  // the ground
+  rect(0, gy - 6, W, FIELD_B - gy + 6, Z.ground);
+  rect(0, gy - 8, W, 3, Z.grass);
   const roff = Math.floor(scroll) % 32;
   for (let x = -32; x < W + 32; x += 32) {
-    rect(x - roff, gy - 6, 30, 2, PAL.roadHi);
-    rect(x - roff + 14, gy + 6, 2, 10, PAL.roadDark);
-    rect(x - roff, gy + 16, 30, 2, PAL.roadDark);
-    rect(x - roff + 4, gy + 18, 2, 10, PAL.roadDark);
+    rect(x - roff, gy - 5, 30, 2, Z.groundHi);
+    rect(x - roff + 14, gy + 6, 2, 10, Z.groundDk); rect(x - roff, gy + 16, 30, 2, Z.groundDk); rect(x - roff + 4, gy + 18, 2, 10, Z.groundDk);
+    if (zi <= 1) { rect(x - roff + 6, gy - 11, 2, 4, Z.grass); rect(x - roff + 20, gy - 10, 2, 3, Z.grass); if (zi === 0 && hash(x) > 0.5) { rect(x - roff + 9, gy - 13, 2, 2, '#ffe14a'); rect(x - roff + 23, gy - 12, 2, 2, '#ff8ab0'); } }
+    if (Z.lava) { rect(x - roff + 2, gy + 10, 10, 1, '#ff6a2a'); rect(x - roff + 11, gy + 11, 1, 4, '#ff6a2a'); }
   }
-  rect(0, FIELD_B - 4, W, 4, '#0c0b0e');
 }
-function drawTorchLight(t) {
-  if (!state.lv.knight) return;
-  const x = heroX('knight') + 14, y = groundY() - 20;
+function drawModeBackground(scroll, crypt) { // the crypt and the trial hall
+  const top = HUD_H, gy = groundY();
+  const bands = crypt ? ['#0c0a12', '#100c18', '#140f1e', '#181224', '#1c142a', '#211630', '#261836', '#2b1a3c', '#301c42']
+    : ['#0f1420', '#121826', '#151c2c', '#182032', '#1b2438', '#1e283e', '#222c44', '#26304a', '#2a3450'];
+  const bh = Math.ceil((gy - top) / bands.length);
+  bands.forEach((c, i) => rect(0, top + i * bh, W, bh, c));
+  const off = Math.floor(scroll * 0.25);
+  for (let k = -1; k < 5; k++) {
+    const i = Math.floor(off / 110) + k, x = i * 110 - off + 20 + hash(i + 9) * 40, w = 26 + hash(i + 5) * 22;
+    rect(x, top, w, gy - top, crypt ? '#17121f' : '#1a2236'); rect(x, top, 2, gy - top, crypt ? '#241c30' : '#2a3450');
+    rect(x + w / 2 - 3, gy - 80, 6, 10, crypt ? '#5a3a7a' : '#6a8ac8');
+  }
+  const fog = crypt ? 'rgba(150,110,200,0.10)' : 'rgba(120,150,220,0.10)';
+  rect(0, gy - 32, W, 16, fog); rect(0, gy - 20, W, 8, fog);
+  rect(0, gy - 6, W, FIELD_B - gy + 6, crypt ? '#2a2430' : '#2a3040');
+  const roff = Math.floor(scroll) % 32, dk = crypt ? '#1c1822' : '#1c2230';
+  for (let x = -32; x < W + 32; x += 32) { rect(x - roff, gy - 6, 30, 2, crypt ? '#3a3242' : '#3a4458'); rect(x - roff + 14, gy + 6, 2, 10, dk); rect(x - roff, gy + 16, 30, 2, dk); }
+}
+function drawTorchLight(t) { // the hero's ember runes light the road once dusk falls
+  const night = state.mode === 'stage' ? zoneOf().night : 1; if (night <= 0) return;
+  const x = heroX('knight') - 10, y = groundY() - 40;
   const f = 1 + Math.sin(t * 13) * 0.04 + Math.sin(t * 7.3) * 0.05;
   const r = (82 + Math.min(40, state.embers * 2)) * f;
-  ctx.save(); ctx.globalCompositeOperation = 'lighter';
-  // stepped rings of torchlight, the dot way
-  [[1, 0.03], [0.72, 0.035], [0.46, 0.045], [0.24, 0.06]].forEach(([k, a]) => disc(x, y, Math.round(r * k), `rgba(255,130,50,${a})`));
-  ctx.restore();
+  [[1, 0.03], [0.72, 0.035], [0.46, 0.045], [0.24, 0.06]].forEach(([k, a]) => disc(x, y, Math.round(r * k), `rgba(255,130,50,${a * night})`));
 }
-function drawEmbersDrift(t) { // the road's ash: rising embers, more of them as embers are earned
-  const n = 10 + Math.min(30, state.embers * 2);
+function drawEmbersDrift(t) { // petals, fireflies, ash or embers, by zone
+  const Z = state.mode === 'stage' ? zoneOf() : null, zi = state.mode === 'stage' ? zoneIndex(state.stage) : 2;
+  const n = 10 + Math.min(30, state.embers * 2) + (zi === 3 ? 20 : 0);
   for (let i = 0; i < n; i++) {
+    const fall = zi === 0; // petals fall, the rest rise
     const p = (t * (12 + hash(i) * 18) + hash(i + 50) * 400) % 280;
-    const x = (hash(i + 7) * W + Math.sin(t + i) * 8) % W, y = FIELD_B - p;
-    if (y < HUD_H) continue;
-    rect(x, y, 2, 2, i % 3 ? 'rgba(255,120,50,0.55)' : 'rgba(255,200,120,0.6)');
+    const x = (hash(i + 7) * W + Math.sin(t + i) * 8 - (fall ? t * 20 : 0) + W * 4) % W, y = fall ? HUD_H + p : FIELD_B - p;
+    if (y < HUD_H || y > FIELD_B) continue;
+    const c = Z ? (i % 3 ? Z.mote : Z.mote2) : state.mode === 'dungeon' ? 'rgba(190,140,255,0.5)' : 'rgba(150,180,255,0.5)';
+    if (zi === 1 && Math.floor(t * 2 + i) % 3 === 0) continue; // fireflies blink
+    rect(x, y, 2, 2, c);
   }
 }
 
-// ---- Drawn icons (no emoji): pixel bitmaps ------------------------------------------------
+// ---- Fantasy pixel UI: oak frames, leather cards, gold trim, ribbons ------------------------
 const BM = {
   coin: ['..kkkkk..', '.kyyyyyk.', 'kywwyyyok', 'kywyyyyok', 'kyyyyyyok', 'kyyyyyyok', 'kyyyyyook', '.koooook.', '..kkkkk..'],
   flame: ['...r....', '...rr...', '..rrr...', '..rorr..', '.rroorr.', '.rooyor.', 'rroyyorr', 'rooyyyor', 'rooywyor', '.rooyor.', '..rrrr..'],
   sword: ['..........kk', '.........kwk', '........kwsk', '.......kwsk.', '......kwsk..', '.....kwsk...',
           '.bb.kwsk....', '..bbwsk.....', '...bbk......', '..hkbb......', '.hh..b......', 'hh..........'],
-  armor: ['.kkk....kkk.', 'kcwck..kccck', 'kcwcckkcccck', 'kcccccccccck', '.kcwccccccck.', '.kcwcccccck',
+  armor: ['.kkk....kkk.', 'kcwck..kccck', 'kcwcckkcccck', 'kcccccccccck', '.kcwccccccck', '.kcwcccccck',
           '..kcwccccck', '..kccccccck', '...kccccck', '....kccck', '.....kck', '......k'],
   speaker: ['....k', '...kk', 'kkkkk', 'kkkkk', 'kkkkk', 'kkkkk', '...kk', '....k'],
   waves: ['..w.', '...w', 'w..w', '.w.w', '.w.w', 'w..w', '...w', '..w.'],
   cross: ['x...x', '.x.x.', '..x..', '.x.x.', 'x...x'],
+  gem: ['..kkk..', '.kbwbk.', 'kbbwbbk', 'kbbbbbk', '.kbbbk.', '..kbk..', '...k...'],
+  scroll: ['.kkkkkk.', 'kppppppk', 'kplllppk', 'kppppppk', 'kplllppk', 'kppppppk', '.kkkkkk.'],
+  soul: ['...k...', '..kpk..', '.kpwpk.', 'kppwppk', 'kpppppk', 'kpppppk', '.kpppk.', '..kkk..'],
+  key: ['.kkk.....', 'kyyyk....', 'ky.ykkkkk', 'kyyyyyyyk', '.kkk.kyk.', '......k..'],
+  star: ['..y..', '.yyy.', 'yyyyy', '.yyy.', '.y.y.'],
+  helm: ['..kkkkk..', '.ksswssk.', 'kssswsssk', 'ksssssssk', 'kskkkkksk', 'kskrrrksk', 'ksskkkssk', '.kssssk..', '..kkkk...'],
+  book: ['kkkkkkkk.', 'krrrrrrkk', 'krryyrrkw', 'krrrrrrkw', 'krryyrrkw', 'krrrrrrkw', 'kkkkkkkkw', '.wwwwwwww'],
+  door: ['..kkkkk..', '.kgggggk.', 'kgkkkkkgk', 'kgkdddkgk', 'kgkdddkgk', 'kgkdddkgk', 'kgkddykgk', 'kgkdddkgk', 'kgkkkkkgk', 'kkkkkkkkk'],
+  crown: ['y...y...y', 'yy.yyy.yy', 'yyyyyyyyy', 'yryybyyry', 'yyyyyyyyy'],
+  hand: ['..k.k.k..', '.kykykyk.', '.kykykykk', 'kkyyyyyyk', 'kyyyyyyk.', '.kyyyyk..', '..kkkk...'],
 };
-function coin(x, y, s = 1) { s = Math.max(1, Math.round(s)); bitmap(BM.coin, x - 4 * s, y - 4 * s, { k: '#4a2e08', y: PAL.gold, w: '#fff2b0', o: '#b97f1c' }, s); }
+const ICON_PAL = {
+  coin: { k: '#4a2e08', y: PAL.gold, w: '#fff2b0', o: '#b97f1c' }, gem: { k: '#0b1630', b: PAL.gem, w: '#d8efff' },
+  scroll: { k: '#3a2510', p: PAL.scroll, l: '#8a6a40' }, soul: { k: '#2a0f40', p: PAL.soul, w: '#f0d8ff' },
+  key: { k: '#3a2508', y: PAL.gold }, star: { y: PAL.trimHi }, helm: { k: '#120f12', s: '#b8bcc8', w: '#ffffff', r: PAL.threat },
+  book: { k: '#1a0c08', r: '#8e2a2a', y: PAL.trimHi, w: '#e8d3a8' }, door: { k: '#0c0a10', g: '#8a8494', d: '#24183a', y: PAL.gold },
+  crown: { y: PAL.trimHi, r: PAL.threat, b: PAL.gem }, hand: { k: '#4a2e08', y: PAL.gold },
+  sword: { k: '#120f12', w: '#ffffff', s: '#c8ccd8', b: '#9a7a44', h: '#5a3c22' }, flame: { r: PAL.ember, o: PAL.torch, y: PAL.torchHi, w: '#fff6d8' },
+};
+function icon(name, x, y, s = 1) { bitmap(BM[name], x, y, ICON_PAL[name], s); } // top-left
+function coin(x, y, s = 1) { s = Math.max(1, Math.round(s)); bitmap(BM.coin, x - 4 * s, y - 4 * s, ICON_PAL.coin, s); }
 function flame(x, y, s = 1) { s = Math.max(1, Math.round(s)); bitmap(BM.flame, x - 4 * s, y - 6 * s, { r: PAL.ember, o: PAL.torch, y: PAL.torchHi, w: '#fff6d8' }, s); }
 function swordIcon(x, y, c) { bitmap(BM.sword, x - 12, y - 12, { k: '#120f12', w: '#ffffff', s: c, b: '#9a7a44', h: '#5a3c22' }, 2); }
 function armorIcon(x, y, c) { bitmap(BM.armor, x - 12, y - 12, { k: '#120f12', c, w: '#ffffff99' }, 2); }
@@ -466,236 +867,450 @@ function speaker(x, y, on) {
   bitmap(BM.speaker, x - 7, y - 8, { k: PAL.ink }, 2);
   if (on) bitmap(BM.waves, x + 3, y - 8, { w: PAL.ink }, 2); else bitmap(BM.cross, x + 3, y - 5, { x: PAL.threat }, 2);
 }
-function pixelLine(x0, y0, x1, y1, w, c) { // a stepped line of w-by-w blocks
-  ctx.fillStyle = c; x0 = Math.round(x0); y0 = Math.round(y0); x1 = Math.round(x1); y1 = Math.round(y1);
-  const n = Math.max(Math.abs(x1 - x0), Math.abs(y1 - y0), 1);
-  for (let i = 0; i <= n; i++) ctx.fillRect(Math.round(x0 + (x1 - x0) * i / n), Math.round(y0 + (y1 - y0) * i / n), w, w);
+function goldSkillIcon(x, y, dark) { // the gold skill has no PixelLab icon: a hand over a coin pile
+  if (dark) { rect(x + 6, y + 8, 20, 18, '#2a2626'); return; }
+  bitmap(BM.coin, x + 2, y + 18, ICON_PAL.coin, 1); bitmap(BM.coin, x + 12, y + 20, ICON_PAL.coin, 1); bitmap(BM.coin, x + 21, y + 17, ICON_PAL.coin, 1);
+  bitmap(BM.hand, x + 7, y + 2, ICON_PAL.hand, 2);
 }
-// A pixel frame: a dark rim with cut corners, a coloured edge, a lit top and a shaded bottom.
-function panelBox(x, y, w, h, fill = PAL.panelHi, edge = PAL.line) {
-  x = Math.round(x); y = Math.round(y); w = Math.round(w); h = Math.round(h);
-  rect(x + 1, y, w - 2, h, '#08070a'); rect(x, y + 1, w, h - 2, '#08070a');
-  rect(x + 1, y + 1, w - 2, h - 2, edge);
-  rect(x + 2, y + 2, w - 4, h - 4, fill);
-  rect(x + 2, y + 2, w - 4, 1, 'rgba(255,255,255,0.10)');
-  rect(x + 2, y + h - 3, w - 4, 1, 'rgba(0,0,0,0.35)');
-}
-function button(b, label, sub, enabled, hot) {
-  const fill = !enabled ? '#221f22' : hot ? '#9a4818' : '#4a2a1a';
-  const edge = !enabled ? '#3a3438' : hot ? PAL.torch : '#7a4a2a';
-  const x = Math.round(b.x), y = Math.round(b.y), w = Math.round(b.w), h = Math.round(b.h);
-  rect(x + 2, y + h - 3, w - 4, 3, '#000'); // the button's depth
-  panelBox(x, y, w, h - 2, fill, edge);
-  if (enabled && hot) { rect(x + 3, y + 3, w - 6, 2, '#ffc07a66'); rect(x + 3, y + 3, 2, h - 9, '#ffc07a33'); }
-  const lx = x + w / 2;
-  text(label, lx, y + (sub ? 13 : (h - 2) / 2), 13, enabled ? PAL.ink : PAL.dim);
-  if (sub) {
-    const tw = textWidth(sub, 13);
-    coin(lx - tw / 2 - 2, y + 29, 1); text(sub, lx + 6, y + 29, 13, enabled ? PAL.gold : PAL.dim);
+function skillIcon(sk, x, y, dark) { if (sk.icon) drawIcon(sk.icon, x, y, dark); else goldSkillIcon(x, y, dark); }
+// PixelLab UI parts, nine-sliced: corners stay whole, edges and centre stretch, pixels stay hard.
+const SLICE = { ui_panel: [14, 14], ui_card: [6, 6], ui_btn: [7, 6], ui_btn_hot: [7, 6], ui_btn_off: [7, 6], ui_tab: [8, 8], ui_ribbon: [24, 0] }; // border x, y in source pixels
+function hasUI(n) { const im = SPR[n]; return im && im.complete && im.naturalWidth > 0; }
+function nine(n, x, y, w, h) {
+  const im = SPR[n]; x = Math.round(x); y = Math.round(y); w = Math.round(w); h = Math.round(h);
+  const iw = im.naturalWidth, ih = im.naturalHeight;
+  const [bx0, by0] = SLICE[n] || [8, 8];
+  const bx = Math.min(bx0, Math.floor(w / 2), Math.floor(iw / 2) - 1), by = Math.min(by0, Math.floor(h / 2), Math.floor(ih / 2) - 1);
+  const sx = [0, bx, iw - bx, iw], dx = [x, x + bx, x + w - bx, x + w];
+  const sy = [0, by, ih - by, ih], dy = [y, y + by, y + h - by, y + h];
+  for (let i = 0; i < 3; i++) for (let j = 0; j < 3; j++) {
+    const sw = sx[i + 1] - sx[i], sh = sy[j + 1] - sy[j], ww = dx[i + 1] - dx[i], hh = dy[j + 1] - dy[j];
+    if (sw > 0 && sh > 0 && ww > 0 && hh > 0) ctx.drawImage(im, sx[i], sy[j], sw, sh, dx[i], dy[j], ww, hh);
   }
 }
+function studs(x, y, w, h, c = PAL.trimHi) { // gold rivets in each corner
+  rect(x + 3, y + 3, 2, 2, c); rect(x + w - 5, y + 3, 2, 2, c); rect(x + 3, y + h - 5, 2, 2, c); rect(x + w - 5, y + h - 5, 2, 2, c);
+}
+// An oak frame: a dark rim with cut corners, a wood border with grain, a gold inner trim.
+function woodFrame(x, y, w, h, fill = PAL.leather) {
+  if (hasUI('ui_panel')) { nine('ui_panel', x, y, w, h); return; }
+  x = Math.round(x); y = Math.round(y); w = Math.round(w); h = Math.round(h);
+  rect(x + 1, y, w - 2, h, '#0b0705'); rect(x, y + 1, w, h - 2, '#0b0705');
+  rect(x + 1, y + 1, w - 2, h - 2, PAL.wood);
+  rect(x + 1, y + 1, w - 2, 1, PAL.woodHi); rect(x + 1, y + h - 2, w - 2, 1, PAL.woodDk);
+  for (let gx = x + 6; gx < x + w - 6; gx += 11) rect(gx, y + 2, 4, 1, PAL.woodDk);
+  rect(x + 3, y + 3, w - 6, h - 6, PAL.trim);
+  rect(x + 4, y + 4, w - 8, h - 8, fill);
+  rect(x + 4, y + 4, w - 8, 1, 'rgba(255,255,255,0.06)');
+  studs(x, y, w, h);
+}
+// A leather card: lighter than the board, a thin gold edge, gold corners.
+function card(x, y, w, h, edge = '#6a4a2a', fill = PAL.leatherHi) {
+  if (hasUI('ui_card') && edge === '#6a4a2a' && fill === PAL.leatherHi) { nine('ui_card', x, y, w, h); ctx.save(); ctx.globalAlpha = 0.45; rect(x + 4, y + 4, w - 8, h - 8, '#0b0705'); ctx.restore(); return; }
+  x = Math.round(x); y = Math.round(y); w = Math.round(w); h = Math.round(h);
+  rect(x + 1, y, w - 2, h, '#0b0705'); rect(x, y + 1, w, h - 2, '#0b0705');
+  rect(x + 1, y + 1, w - 2, h - 2, edge); rect(x + 2, y + 2, w - 4, h - 4, fill);
+  rect(x + 2, y + 2, w - 4, 1, 'rgba(255,255,255,0.07)'); rect(x + 2, y + h - 3, w - 4, 1, 'rgba(0,0,0,0.35)');
+  rect(x + 1, y + 1, 3, 1, PAL.trim); rect(x + 1, y + 1, 1, 3, PAL.trim); rect(x + w - 4, y + 1, 3, 1, PAL.trim); rect(x + w - 2, y + 1, 1, 3, PAL.trim);
+  rect(x + 1, y + h - 2, 3, 1, PAL.trim); rect(x + 1, y + h - 4, 1, 3, PAL.trim); rect(x + w - 4, y + h - 2, 3, 1, PAL.trim); rect(x + w - 2, y + h - 4, 1, 3, PAL.trim);
+}
+function ribbon(cx, y, w, label, c = '#8e1f1f') { // a banner with notched tails
+  if (hasUI('ui_ribbon')) { nine('ui_ribbon', cx - w / 2 - 14, y - 3, w + 28, 24); text(label, cx, y + 9, 11, PAL.trimHi); return; }
+  const x = Math.round(cx - w / 2);
+  rect(x - 8, y + 3, 10, 14, '#5a1010'); rect(x + w - 2, y + 3, 10, 14, '#5a1010');
+  rect(x - 8, y + 9, 3, 3, 'rgba(0,0,0,0)'); rect(x - 9, y + 8, 3, 4, '#07070a'); rect(x + w + 6, y + 8, 3, 4, '#07070a');
+  rect(x, y, w, 18, '#0b0705'); rect(x + 1, y + 1, w - 2, 16, c); rect(x + 1, y + 1, w - 2, 1, '#c0402a'); rect(x + 1, y + 15, w - 2, 2, '#5a1010');
+  rect(x + 1, y + 3, w - 2, 1, PAL.trim); rect(x + 1, y + 14, w - 2, 1, PAL.trim);
+  text(label, cx, y + 9, 11, PAL.trimHi);
+}
+function button(b, label, sub, enabled, hot, cur = 'coin') {
+  const x = Math.round(b.x), y = Math.round(b.y), w = Math.round(b.w), h = Math.round(b.h);
+  const ui = hot && enabled ? 'ui_btn_hot' : 'ui_btn';
+  if (hasUI(ui)) { nine(ui, x, y, w, h); if (!enabled) { ctx.save(); ctx.globalAlpha = 0.55; rect(x + 2, y + 2, w - 4, h - 4, '#0b0705'); ctx.restore(); } }
+  else {
+    const fill = !enabled ? '#2a2424' : hot ? '#9a2a1e' : '#5a3a22';
+    const edge = !enabled ? '#4a4040' : hot ? PAL.trimHi : PAL.trim;
+    rect(x + 2, y + h - 3, w - 4, 3, '#000');
+    rect(x + 1, y, w - 2, h - 2, '#0b0705'); rect(x, y + 1, w, h - 4, '#0b0705');
+    rect(x + 1, y + 1, w - 2, h - 4, edge); rect(x + 2, y + 2, w - 4, h - 6, fill);
+    if (enabled) { rect(x + 2, y + 2, w - 4, 2, hot ? '#d2553a' : '#7d5230'); rect(x + 2, y + h - 6, w - 4, 1, 'rgba(0,0,0,0.35)'); }
+  }
+  const lx = x + w / 2;
+  text(label, lx, y + (sub ? 13 : (h - 3) / 2), 11, enabled ? PAL.ink : PAL.dim);
+  if (sub) {
+    const tw = textWidth(sub, 11);
+    const ix = Math.round(lx - tw / 2 - 6);
+    if (cur === 'coin') coin(ix, y + 28, 1); else icon(cur, ix - 4, y + 24, 1);
+    text(sub, lx + 5, y + 28, 11, enabled ? (cur === 'coin' ? PAL.gold : cur === 'gem' ? PAL.gem : cur === 'soul' ? PAL.soul : cur === 'key' ? PAL.gold : PAL.scroll) : PAL.dim);
+  }
+}
+function bar(x, y, w, h, p, c, back = '#140c08') { rect(x - 1, y - 1, w + 2, h + 2, '#0b0705'); rect(x, y, w, h, back); rect(x, y, Math.round(w * Math.max(0, Math.min(1, p))), h, c); rect(x, y, Math.round(w * Math.max(0, Math.min(1, p))), 1, 'rgba(255,255,255,0.3)'); }
 
 // ---- Drawing the battle ------------------------------------------------------------------
 function heroBob(id, t) { return Math.round(Math.sin(t * 4 + id.length) * 1.5 + (state.march > 0 ? Math.abs(Math.sin(t * 14)) * -3 : 0)); }
+function drawStars(x, y, n) { for (let i = 0; i < n; i++) bitmap(BM.star, x + i * 6, y, ICON_PAL.star, 1); }
 function drawField() {
-  const t = state.t;
+  const t = state.t, gy = groundY();
   drawBackground(state.scroll);
   drawTorchLight(t);
-  const gy = groundY();
-  // party, back to front
+  if (state.buffs.sanct > 0) { // a golden column over the party
+    const a = Math.min(1, state.buffs.sanct) * 0.12;
+    rect(20, HUD_H, 180, gy - HUD_H, `rgba(255,233,166,${a})`); for (let y = HUD_H + (Math.floor(t * 40) % 8); y < gy; y += 8) rect(26 + (y * 7) % 170, y, 2, 4, `rgba(255,240,190,${a * 3})`);
+  }
   heroOrder().slice().reverse().forEach(id => {
     const a = state.anim[id];
     const lunge = id === 'knight' ? Math.sin(Math.min(1, a / 0.18) * Math.PI) * 14 : id === 'archer' ? -a * 10 : 0;
-    drawSprite(id, heroX(id) + lunge, gy + heroBob(id, t));
-    if (id === 'cleric' && a > 0) { // a halo pulse over the party
-      ctx.save(); ctx.globalCompositeOperation = 'lighter'; ctx.globalAlpha = a / 0.4 * 0.5;
-      ctx.fillStyle = PAL.holy; ctx.fillRect(heroX(id) - 14, gy - 74, 28, 3); ctx.restore();
-    }
-    if (id === 'pyro' && a > 0) flame(heroX(id) + 18, gy - 30, 1.2);
+    const x = heroX(id) + lunge, y = gy + heroBob(id, t);
+    drawSprite(id, x, y);
+    const st = state.stars[id] || 0; if (st) drawStars(Math.round(x - st * 3), y - 72, st);
+    if (id === 'cleric' && a > 0) { ctx.save(); ctx.globalAlpha = a / 0.4 * 0.6; rect(heroX(id) - 14, gy - 76, 28, 3, PAL.holy); ctx.restore(); }
+    if (id === 'pyro' && a > 0) flame(heroX(id) + 18, gy - 30, 1);
+    if (id === 'knight' && state.buffs.cry > 0 && Math.floor(t * 8) % 2) rect(x - 22, y - 70, 44, 2, PAL.threat);
   });
-  // enemy
+  if (state.spirit && spiritLv(state.spirit)) { // the spirit floats behind the knight
+    const sp = SPIRITS.find(s => s.id === state.spirit);
+    drawSprite(sp.sprite, heroX('knight') - 30, gy - 40 + Math.round(Math.sin(t * 3) * 4));
+    if (Math.floor(t * 6) % 3 === 0) rect(heroX('knight') - 26 + Math.round(Math.sin(t * 5) * 10), gy - 60 + Math.round(Math.cos(t * 4) * 8), 2, 2, '#ffffffaa');
+  }
   const e = state.enemy;
   if (e) {
     const ex = enemyX(), fly = e.kind.fly ? -26 + Math.sin(t * 6) * 5 : 0;
     const alpha = e.dead ? Math.max(0, 1 - e.dead / 0.4) : 1;
     const lunge = e.boss ? -Math.sin(Math.min(1, e.lunge / 0.3) * Math.PI) * 18 : 0;
     drawSprite(e.kind.id, ex + lunge, gy + fly + (e.dead ? e.dead * 30 : 0), { flash: e.flash > 0, alpha, rot: e.dead ? e.dead * 1.2 : 0 });
-    if (!e.dead && e.x < 0.05) { // hp bar and name
+    if (state.buffs.burn > 0 && !e.dead && Math.floor(t * 10) % 2) flame(ex + (hash(Math.floor(t * 10)) - 0.5) * 30, gy - 30 - hash(Math.floor(t * 10) + 3) * 30, 1);
+    if (!e.dead && e.x < 0.05) {
       const bw = e.boss ? 120 : 70, bx = ex - bw / 2, by = gy - (e.boss ? 150 : 82) + fly;
-      rect(bx - 1, by - 1, bw + 2, 8, '#000'); rect(bx, by, bw, 6, '#3a1414');
-      rect(bx, by, bw * Math.max(0, e.hp / e.max), 6, PAL.threat); rect(bx, by, bw * Math.max(0, e.hp / e.max), 2, '#ff8a8a');
-      textOutlined(e.kind.name, ex, by - 10, e.boss ? 14 : 12, e.boss ? PAL.threat : PAL.muted);
+      bar(bx, by, bw, 6, e.hp / e.max, PAL.threat, '#3a1414');
+      textOutlined(e.kind.name, ex, by - 10, 11, e.boss ? PAL.threat : PAL.muted);
     }
   }
-  // shots
   for (const s of state.shots) {
     const p = Math.min(1, s.t / s.dur), x = s.x0 + (s.x1 - s.x0) * p, y = s.y0 + (s.y1 - s.y0) * p - Math.sin(p * Math.PI) * s.arc;
-    if (s.kind === 'arrow') {
-      ctx.save(); ctx.translate(x, y); ctx.rotate(Math.atan2((s.y1 - s.y0) - Math.cos(p * Math.PI) * Math.PI * s.arc, s.x1 - s.x0));
-      rect(-10, -1, 14, 2, '#c9b48a'); rect(4, -2, 4, 4, '#e8e8f0'); rect(-12, -2, 3, 4, '#5fb04a'); ctx.restore();
-    } else if (s.kind === 'fire') {
-      ctx.save(); ctx.globalCompositeOperation = 'lighter';
-      for (let k = 0; k < 4; k++) { ctx.globalAlpha = 0.25; rect(x - 6 - k * 6, y - 4 + k, 8, 8 - k * 2, PAL.ember); }
-      ctx.restore(); flame(x, y, 1.3);
-    }
+    if (s.kind === 'arrow') { rect(x - 10, y - 1, 14, 2, '#c9b48a'); rect(x + 4, y - 2, 4, 4, '#e8e8f0'); rect(x - 12, y - 2, 3, 4, '#5fb04a'); }
+    else if (s.kind === 'fall') { rect(x - 1, y - 12, 2, 14, '#c9b48a'); rect(x - 2, y + 1, 4, 4, '#e8e8f0'); rect(x - 2, y - 14, 4, 3, '#5fb04a'); }
+    else if (s.kind === 'fire') { ctx.save(); ctx.globalAlpha = 0.35; for (let k = 0; k < 4; k++) rect(x - 6 - k * 6, y - 4 + k, 8, 8 - k * 2, PAL.ember); ctx.restore(); flame(x, y, 1); }
   }
-  // sparks and slashes
+  for (const f of state.fx) drawFx(f, gy);
   for (const p of state.sparks) {
-    if (p.slash) {
-      ctx.save(); ctx.globalAlpha = 1 - p.t / 0.2; // a slash arc of 2px blocks
-      for (let a = -1.2; a <= 0.2; a += 0.09) { const k = (a + 1.2) / 1.4; rect(p.x - 10 + Math.cos(a) * 22, p.y + 10 + Math.sin(a) * 22, k < 0.3 || k > 0.8 ? 2 : 3, 2, '#fff'); }
-      ctx.restore();
-    } else if (p.pillar) {
-      ctx.save(); ctx.globalCompositeOperation = 'lighter'; ctx.globalAlpha = 1 - p.t / 0.45;
-      rect(p.x - 10, HUD_H, 20, groundY() - HUD_H, '#ffe9a655'); rect(p.x - 4, HUD_H, 8, groundY() - HUD_H, '#fff6d0aa'); ctx.restore();
-    } else rect(p.x, p.y, 3, 3, p.gold ? PAL.gold : PAL.torchHi);
+    if (p.slash) { ctx.save(); ctx.globalAlpha = 1 - p.t / 0.2; for (let a = -1.2; a <= 0.2; a += 0.09) { const k = (a + 1.2) / 1.4; rect(p.x - 10 + Math.cos(a) * 22, p.y + 10 + Math.sin(a) * 22, k < 0.3 || k > 0.8 ? 2 : 3, 2, '#fff'); } ctx.restore(); }
+    else if (p.pillar) { ctx.save(); ctx.globalAlpha = 1 - p.t / 0.45; rect(p.x - 10, HUD_H, 20, gy - HUD_H, '#ffe9a644'); rect(p.x - 4, HUD_H, 8, gy - HUD_H, '#fff6d0aa'); ctx.restore(); }
+    else rect(p.x, p.y, 3, 3, p.gold ? PAL.gold : PAL.torchHi);
   }
-  // floating numbers
-  for (const f of state.floats) {
-    ctx.globalAlpha = Math.max(0, 1 - f.t / 0.9);
-    textOutlined(f.txt, f.x, f.y - f.t * 40, f.big ? 20 : 14, f.color);
-    ctx.globalAlpha = 1;
-  }
+  for (const f of state.floats) { ctx.globalAlpha = Math.max(0, 1 - f.t / 0.9); textOutlined(f.txt, f.x, f.y - f.t * 40, f.big ? 20 : 11, f.color); ctx.globalAlpha = 1; }
   drawEmbersDrift(t);
-  // first-minute hint
-  if (state.taps < 6 && state.rebirths === 0 && state.lv.knight < tune.autoUnlockLevel) {
-    const a = 0.6 + Math.sin(t * 6) * 0.4;
-    ctx.globalAlpha = a; textOutlined('화면을 탭해서 베기', W / 2, HUD_H + 70, 18, PAL.torchHi); ctx.globalAlpha = 1;
+  if (state.mode === 'stage' && state.taps < 6 && state.rebirths === 0 && state.lv.knight < tune.autoUnlockLevel) {
+    ctx.globalAlpha = 0.6 + Math.sin(t * 6) * 0.4; textOutlined('화면을 탭해서 베기', W / 2, HUD_H + 130, 18, PAL.torchHi); ctx.globalAlpha = 1;
   }
   if (state.toast) {
     ctx.globalAlpha = Math.min(1, state.toast.t / 0.3);
-    panelBox(20, HUD_H + 92, W - 40, 30, '#0d0c10ee', '#3a3440');
-    text(state.toast.msg, W / 2, HUD_H + 107, 13, state.toast.color); ctx.globalAlpha = 1;
+    const tw = Math.min(W - 24, textWidth(state.toast.msg, 11) + 28);
+    card(W / 2 - tw / 2, HUD_H + 152, tw, 22, '#6a4a2a', '#1a120ecc');
+    text(state.toast.msg, W / 2, HUD_H + 163, 11, state.toast.color); ctx.globalAlpha = 1;
+  }
+  if (state.popup) { // a parchment notice for big moments
+    const p = state.popup; ctx.globalAlpha = Math.min(1, p.t / 0.3);
+    const h = 40 + p.lines.length * 16;
+    woodFrame(40, 120, W - 80, h, '#2a1d16');
+    ribbon(W / 2, 112, Math.min(220, textWidth(p.title, 11) + 40), p.title);
+    p.lines.forEach((l, i) => text(l, W / 2, 144 + i * 16, 11, i ? PAL.muted : p.color));
+    ctx.globalAlpha = 1;
   }
 }
+function drawFx(f, gy) {
+  const ex = enemyX();
+  if (f.kind === 'bigslash') { ctx.save(); ctx.globalAlpha = 1 - f.t / 0.35; for (let a = -1.6; a <= 0.6; a += 0.05) rect(ex - 20 + Math.cos(a) * 46, gy - 40 + Math.sin(a) * 46, 4, 4, a > -0.6 && a < 0 ? '#fff6d8' : PAL.torch); ctx.restore(); }
+  if (f.kind === 'storm') { ctx.save(); ctx.globalAlpha = 1 - f.t / 0.6; for (let k = 0; k < 14; k++) flame(ex - 30 + hash(k) * 60, gy - 10 - ((f.t * 200 + hash(k + 9) * 120) % 140), 2); ctx.restore(); }
+  if (f.kind === 'sanct') { ctx.save(); ctx.globalAlpha = 1 - f.t / 0.6; disc(110, gy - 30, Math.round(20 + f.t * 160), 'rgba(255,233,166,0.15)'); ctx.restore(); }
+  if (f.kind === 'cry') { ctx.save(); ctx.globalAlpha = 1 - f.t / 0.5; const r = Math.round(10 + f.t * 220); for (let a = 0; a < 6.28; a += 0.12) rect(heroX('knight') + Math.cos(a) * r, gy - 34 + Math.sin(a) * r * 0.6, 3, 3, PAL.threat); ctx.restore(); }
+  if (f.kind === 'gold') { ctx.save(); ctx.globalAlpha = 1 - f.t / 0.8; for (let k = 0; k < 10; k++) coin(40 + hash(k) * 260, HUD_H + 20 + ((f.t * 180 + hash(k + 4) * 200) % 240), 1); ctx.restore(); }
+}
+function resIcon(name, x, y, n, c) { icon(name, x, y - 4, 1); text(fmt(n), x + 12, y, 11, c, 'left'); }
 function drawHud() {
-  rect(0, 0, W, HUD_H, '#0d0c10'); rect(0, HUD_H - 2, W, 2, '#2a2530');
-  coin(16, 20, 2); text(fmt(state.gold), 32, 21, 20, PAL.gold, 'left');
-  const boss = state.enemy && state.enemy.boss;
-  text(`스테이지 ${state.stage}`, 178, 14, 13, boss ? PAL.threat : PAL.ink);
-  text(state.farming ? '파밍 중' : boss ? '보스전' : `${state.kills}/${tune.killsPerStage}`, 178, 29, 11, PAL.muted);
-  if (state.embers > 0) { flame(248, 20, 1); text(String(state.embers), 258, 20, 13, PAL.ember, 'left'); }
+  rect(0, 0, W, HUD_H, PAL.wood); rect(0, 0, W, 1, PAL.woodHi);
+  for (let gx = 4; gx < W; gx += 13) rect(gx, 8 + (gx % 3) * 9, 6, 1, PAL.woodDk);
+  rect(0, HUD_H - 4, W, 1, '#0b0705'); rect(0, HUD_H - 3, W, 2, PAL.trim); rect(0, HUD_H - 1, W, 1, '#0b0705');
+  card(4, 5, 112, 27, '#6a4a2a', '#1a120e'); coin(16, 18, 2); text(fmt(state.gold), 30, 19, 20, PAL.gold, 'left');
+  const boss = state.enemy && state.enemy.boss && state.mode === 'stage';
+  const stageLabel = state.mode === 'dungeon' ? `지하묘지 B${state.floor} · ${state.modeIdx + 1}/${CRYPT.length}` : state.mode === 'trial' ? `시험 · ${RANKS[state.rank + 1]}` : `스테이지 ${state.stage}`;
+  text(stageLabel, 186, 12, 11, boss ? PAL.threat : PAL.ink);
+  if (state.mode === 'stage') text(zoneOf().name, 186, 26, 11, PAL.muted, 'center', 'normal');
+  if (state.mode !== 'stage') { icon('crown', 160, 22, 1); text(RANKS[state.rank], 172, 26, 11, PAL.trimHi, 'left'); }
   const bs = buttons();
   const pb = bs.find(b => b.id === 'pause'), mb = bs.find(b => b.id === 'mute');
-  panelBox(pb.x, pb.y, pb.w, pb.h); rect(pb.x + 9, pb.y + 8, 4, 12, PAL.ink); rect(pb.x + 16, pb.y + 8, 4, 12, PAL.ink);
-  panelBox(mb.x, mb.y, mb.w, mb.h); speaker(mb.x + 13, mb.y + 14, !muted);
-  const bb = bs.find(b => b.id === 'boss');
-  if (bb) { button(bb, '보스 도전 (B)', null, true, true); }
-}
-function drawStrip() { // between field and panel: progress or boss timer, and the party's power
-  rect(0, FIELD_B, W, PANEL_Y - FIELD_B, '#0d0c10');
-  const e = state.enemy;
-  if (e && e.boss && !e.dead) {
-    const p = state.bossT / tune.bossTime;
-    rect(10, FIELD_B + 6, W - 20, 10, '#2a1010'); rect(10, FIELD_B + 6, (W - 20) * p, 10, p < 0.3 ? '#ff4a4a' : PAL.threat);
-    text(`${state.bossT.toFixed(1)}초`, W / 2, FIELD_B + 11, 11, PAL.ink);
-  } else {
-    const n = tune.killsPerStage, w = (W - 20) / n;
-    for (let i = 0; i < n; i++) rect(10 + i * w + 1, FIELD_B + 7, w - 2, 8, i < state.kills ? PAL.torch : '#2a2530');
+  card(pb.x, pb.y, pb.w, pb.h, PAL.trim, '#3a2616'); rect(pb.x + 9, pb.y + 8, 4, 12, PAL.ink); rect(pb.x + 16, pb.y + 8, 4, 12, PAL.ink);
+  card(mb.x, mb.y, mb.w, mb.h, PAL.trim, '#3a2616'); speaker(mb.x + 13, mb.y + 14, !muted);
+  // skill bar
+  for (let i = 0; i < 3; i++) {
+    const b = bs.find(x => x.id === 'cast:' + i), id = state.slots[i], open = i < slotsOpen();
+    card(b.x, b.y, b.w, b.h, open ? PAL.trim : '#3a3030', '#120c0a');
+    if (!open) { icon('crown', b.x + 15, b.y + 16, 1); continue; }
+    if (!id) continue;
+    const sk = SKILLS.find(s => s.id === id), cd = state.skillCd[id] || 0;
+    skillIcon(sk, b.x + 3, b.y + 3, false);
+    if (cd > 0) { const p = cd / tune[sk.cd]; ctx.save(); ctx.globalAlpha = 0.65; rect(b.x + 2, b.y + 2, b.w - 4, Math.round((b.h - 4) * p), '#000'); ctx.restore(); textOutlined(String(Math.ceil(cd)), b.x + b.w / 2, b.y + b.h / 2, 11, PAL.ink); }
+    else if (Math.floor(state.t * 4) % 2) rect(b.x + 2, b.y + 2, b.w - 4, 1, PAL.trimHi);
+    text('ZXC'[i], b.x + b.w - 6, b.y + b.h - 7, 11, PAL.muted);
   }
+  const ab = bs.find(b => b.id === 'auto');
+  card(ab.x, ab.y, ab.w, ab.h, state.autoSkill ? PAL.trimHi : '#4a4040', state.autoSkill ? '#5a2a14' : '#1a1414');
+  text('AUTO', ab.x + ab.w / 2, ab.y + ab.h / 2, 11, state.autoSkill ? PAL.torchHi : PAL.dim);
+  const bb = bs.find(b => b.id === 'boss'); if (bb) button(bb, '보스 도전 (B)', null, true, true);
+  const lb = bs.find(b => b.id === 'leave'); if (lb) button(lb, '나가기', null, true, false);
+}
+function drawStrip() { // between field and panel: progress or timer, then the materials
+  rect(0, FIELD_B, W, PANEL_Y - FIELD_B, PAL.wood); rect(0, FIELD_B, W, 2, PAL.trim); rect(0, FIELD_B + 2, W, 1, '#0b0705');
+  const e = state.enemy;
+  if (state.mode === 'stage' && e && e.boss && !e.dead) {
+    const total = tune.bossTime + frostBonus();
+    bar(8, FIELD_B + 6, W - 16, 6, state.bossT / total, state.bossT / total < 0.3 ? '#ff4a4a' : PAL.threat, '#2a1010');
+  } else if (state.mode === 'stage') {
+    const n = tune.killsPerStage, w = (W - 16) / n;
+    for (let i = 0; i < n; i++) { rect(8 + i * w, FIELD_B + 5, w - 2, 8, '#0b0705'); rect(9 + i * w, FIELD_B + 6, w - 4, 6, i < state.kills ? PAL.torch : '#2a1a10'); }
+  } else bar(8, FIELD_B + 6, W - 16, 6, state.modeT / (state.mode === 'dungeon' ? tune.dungeonTime + frostBonus() : tune.trialTime + frostBonus()), state.mode === 'dungeon' ? PAL.soul : PAL.gem);
+  const y = FIELD_B + 21;
+  resIcon('gem', 8, y, state.stones, PAL.gem); resIcon('scroll', 66, y, state.scrolls, PAL.scroll);
+  resIcon('soul', 122, y, state.souls, PAL.soul); resIcon('key', 174, y, state.keys, PAL.gold);
+  if (state.embers > 0) { flame(234, y, 1); text(String(state.embers), 242, y, 11, PAL.ember, 'left'); }
+  text(`초당 ${fmt(totalDps())}`, W - 8, y, 11, PAL.ink, 'right');
+  rect(0, PANEL_Y - 2, W, 2, '#0b0705');
 }
 function drawPanel() {
-  rect(0, PANEL_Y, W, H - PANEL_Y, PAL.panel);
+  woodFrame(0, PANEL_Y, W, TAB_Y - PANEL_Y + 2, '#1c1410');
   if (state.tab === 'party') drawParty();
+  if (state.tab === 'skill') drawSkills();
   if (state.tab === 'gear') drawGear();
+  if (state.tab === 'adv') drawAdventure();
   if (state.tab === 'rebirth') drawRebirth();
-  // tabs
+  if (state.tab === 'quest') drawQuests();
+  // the tab bar: oak planks, the open one raised and lit
+  rect(0, TAB_Y, W, H - TAB_Y, PAL.woodDk);
   buttons().filter(b => b.id.startsWith('tab:')).forEach(b => {
     const on = state.tab === b.id.slice(4);
-    rect(b.x, b.y, b.w, b.h, on ? '#2c2630' : '#121014'); rect(b.x, b.y, b.w, 2, on ? PAL.torch : '#2a2530');
-    if (b.x > 0) rect(b.x, b.y, 1, b.h, '#2a2530');
-    text(b.label, b.x + b.w / 2, b.y + b.h / 2 + 1, 20, on ? PAL.ink : PAL.muted);
-    const dot = (b.id === 'tab:gear' && state.drop) || (b.id === 'tab:rebirth' && embersFor(state.maxStage) > 0);
-    if (dot) { rect(b.x + b.w / 2 + 22, b.y + 10, 7, 7, PAL.threat); }
+    const x = Math.round(b.x), y = Math.round(b.y), w = Math.round(b.w), h = Math.round(b.h);
+    if (hasUI('ui_tab')) { nine('ui_tab', x, y, w, h); if (!on) { ctx.save(); ctx.globalAlpha = 0.45; rect(x, y, w, h, '#000'); ctx.restore(); } }
+    else {
+      rect(x, y, w, h, on ? PAL.woodHi : PAL.wood); rect(x, y, w, 1, on ? PAL.trimHi : '#0b0705');
+      rect(x + w - 1, y, 1, h, '#0b0705'); rect(x, y + h - 1, w, 1, '#0b0705');
+      for (let gy = y + 6; gy < y + h - 4; gy += 9) rect(x + 4 + (gy % 5), gy, 8, 1, on ? PAL.wood : PAL.woodDk);
+    }
+    if (on) { rect(x + 2, y + 2, w - 4, 2, PAL.trim); }
+    icon(b.icon, x + w / 2 - BM[b.icon][0].length, y + 6, 2);
+    text(b.label, x + w / 2, y + h - 11, 11, on ? PAL.trimHi : PAL.muted);
+    const dot = (b.id === 'tab:gear' && (state.drop || mergeTarget('weapon') >= 0 || mergeTarget('armor') >= 0))
+      || (b.id === 'tab:rebirth' && embersFor(state.maxStage) > 0)
+      || (b.id === 'tab:quest' && questAlert())
+      || (b.id === 'tab:party' && HEROES.some(h => state.lv[h.id] && canEvolve(h.id)))
+      || (b.id === 'tab:adv' && state.mode === 'stage' && (state.keys > 0 || (state.rank < RANKS.length - 1 && state.bestStage >= rankReq(state.rank + 1))));
+    if (dot) { rect(x + w - 14, y + 5, 7, 7, '#0b0705'); rect(x + w - 13, y + 6, 5, 5, PAL.threat); }
   });
+}
+function portrait(id, x, y, dark) { // the sprite's head at 2x in a framed window
+  card(x, y, 44, 44, PAL.trim, '#120c0a');
+  const im = SPR[id]; if (!im || !im.complete || !im.naturalWidth) return;
+  ctx.save(); if (dark) ctx.filter = 'brightness(0.25)';
+  const [cx, cy, cw, ch] = (META[id] && META[id].face) || [6, 1, 20, 20];
+  ctx.drawImage(im, cx, cy, cw, ch, x + 2, y + 2, 40, 40); ctx.restore();
 }
 function drawParty() {
   const bs = buttons();
   HEROES.forEach((h, i) => {
-    const y = PANEL_Y + 6 + i * 60, lv = state.lv[h.id];
-    panelBox(6, y + 2, W - 12, 56, i % 2 ? '#1c1a20' : '#201d24', '#2c2830');
-    // portrait: the sprite's head and torso, at 2x
-    const im = SPR[h.id];
-    rect(12, y + 8, 44, 44, '#100f13');
-    if (im && im.complete && im.naturalWidth) {
-      ctx.save(); if (!lv) ctx.filter = 'brightness(0.25)';
-      ctx.drawImage(im, 9, 3, 22, 22, 12, y + 8, 44, 44); ctx.restore();
-    }
-    text(lv ? `${h.name}  Lv ${lv}` : h.name, 64, y + 16, 13, lv ? PAL.ink : PAL.muted, 'left');
+    const y = PANEL_Y + 4 + i * 56, lv = state.lv[h.id];
+    card(6, y + 4, W - 12, 52);
+    portrait(h.id, 10, y + 8, !lv);
+    text(h.name, 60, y + 16, 11, lv ? PAL.ink : PAL.muted, 'left');
+    drawStars(60 + textWidth(h.name, 11) + 4, y + 13, state.stars[h.id] || 0);
     let sub;
-    if (!lv) sub = `${h.role} · 고용 시 +${fmt(heroDps(h, 1))}`;
-    else if (h.id === 'knight' && lv < tune.autoUnlockLevel) sub = `탭 ${fmt(tapDamage())} · Lv${tune.autoUnlockLevel}에 자동 공격`;
-    else if (h.id === 'cleric') sub = `초당 ${fmt(heroDps(h))} · 아군 +${Math.round(lv * tune.clericAura * 100)}%`;
-    else sub = `초당 피해 ${fmt(heroDps(h))}  (+${fmt(heroDps(h, lv + 1) - heroDps(h))})`;
-    text(sub, 64, y + 33, 11, PAL.muted, 'left', 'normal');
-    // milestone bar
+    if (!lv) sub = `${h.role} · +${fmt(heroDps(h, 1))}/초`;
+    else if (h.id === 'knight' && lv < tune.autoUnlockLevel) sub = `Lv${lv} · 탭 ${fmt(tapDamage())} · Lv${tune.autoUnlockLevel}부터 자동`;
+    else sub = `Lv${lv} · 초당 ${fmt(heroDps(h))} (+${fmt(heroDps(h, lv + 1) - heroDps(h))})`;
+    text(sub, 60, y + 31, 11, PAL.muted, 'left', 'normal');
     if (lv) {
       const nm = nextMilestone(lv), prev = MILESTONES[MILESTONES.indexOf(nm) - 1] || 0;
-      const p = nm ? (lv - prev) / (nm - prev) : 1;
-      rect(64, y + 45, 100, 5, '#2a2530'); rect(64, y + 45, 100 * p, 5, PAL.torch);
-      if (nm) text(`Lv${nm} x${tune.milestoneMult}`, 170, y + 47, 10, PAL.dim, 'left', 'normal');
+      bar(60, y + 44, 70, 4, nm ? (lv - prev) / (nm - prev) : 1, PAL.torch);
+      if (nm) text(`Lv${nm} x${tune.milestoneMult}`, 134, y + 46, 11, PAL.dim, 'left', 'normal');
     }
+    const eb = bs.find(x => x.id === 'evo:' + i);
+    if (eb) { const n = evoNeed(h.id); button(eb, '진화', String(n.souls), canEvolve(h.id), canEvolve(h.id), 'soul'); }
     const b = bs.find(x => x.id === 'buy:' + i), c = heroCost(h), ok = state.gold >= c;
     button(b, lv ? `강화 (${i + 1})` : `고용 (${i + 1})`, fmt(c), ok, ok);
   });
 }
-function gearCard(x, y, w, item, slot, title) {
-  panelBox(x, y, w, 70, '#1e1b22', item ? RARITY[item.r].color + '88' : '#2c2830');
-  text(title, x + 10, y + 13, 11, PAL.muted, 'left', 'normal');
-  if (slot === 'weapon') swordIcon(x + 24, y + 42, item ? RARITY[item.r].color : PAL.dim);
-  else armorIcon(x + 24, y + 42, item ? RARITY[item.r].color : PAL.dim);
-  if (!item) { text('비어 있음', x + 46, y + 42, 13, PAL.dim, 'left'); return; }
-  text(`[${RARITY[item.r].name}]`, x + 46, y + 32, 11, RARITY[item.r].color, 'left');
-  text(item.name, x + 46, y + 48, 13, PAL.ink, 'left');
-  text(slot === 'weapon' ? `피해 +${item.pct}%` : `금화 +${item.pct}%`, x + w - 10, y + 13, 12, PAL.torchHi, 'right');
+function drawSkills() {
+  const bs = buttons();
+  SKILLS.forEach((sk, i) => {
+    const b = bs.find(x => x.id === 'sel:' + sk.id), unl = skillUnlocked(sk), eq = state.slots.includes(sk.id), sel = state.selSkill === sk.id;
+    card(b.x, b.y, b.w, b.h, sel ? PAL.trimHi : eq ? PAL.trim : '#5a4030', sel ? '#3a2818' : PAL.leatherHi);
+    card(b.x + 5, b.y + 10, 36, 36, '#6a4a2a', '#120c0a'); skillIcon(sk, b.x + 7, b.y + 12, !unl);
+    text(sk.name, b.x + 46, b.y + 16, 11, unl ? PAL.ink : PAL.dim, 'left');
+    text(unl ? `Lv${state.skillLv[sk.id] || 1}` : `스테이지 ${tune[sk.unlock]}`, b.x + 46, b.y + 32, 11, unl ? PAL.scroll : PAL.dim, 'left', 'normal');
+    if (eq) text('장착', b.x + 46, b.y + 45, 11, PAL.trimHi, 'left');
+  });
+  const sk = SKILLS.find(s => s.id === state.selSkill), unl = skillUnlocked(sk), lv = state.skillLv[sk.id] || 1;
+  card(8, PANEL_Y + 124, W - 16, 98, '#6a4a2a', PAL.leatherHi);
+  text(`${sk.name}  Lv${lv}`, 18, PANEL_Y + 136, 11, PAL.trimHi, 'left');
+  text(`재사용 ${tune[sk.cd]}초`, W - 18, PANEL_Y + 136, 11, PAL.muted, 'right', 'normal');
+  text(sk.desc(1 + tune.skillLvStep * (lv - 1)), 18, PANEL_Y + 152, 11, PAL.ink, 'left', 'normal');
+  text(unl ? `다음 레벨: ${sk.desc(1 + tune.skillLvStep * lv)}` : `최고 스테이지 ${tune[sk.unlock]}에 해금`, 18, PANEL_Y + 167, 11, PAL.dim, 'left', 'normal');
+  const open = slotsOpen();
+  button(bs.find(b => b.id === 'equipsk'), state.slots.includes(sk.id) ? '해제' : `장착 (슬롯 ${open}칸)`, null, unl, unl && !state.slots.includes(sk.id));
+  button(bs.find(b => b.id === 'upsk'), '레벨 업', String(lv), unl && state.scrolls >= lv, unl && state.scrolls >= lv, 'scroll');
+}
+function gearCard(x, y, w, item, slot) {
+  card(x, y, w, 80, item ? RARITY[item.r].color : '#5a4030', PAL.leatherHi);
+  text(slot === 'weapon' ? '무기' : '갑옷', x + 8, y + 10, 11, PAL.muted, 'left', 'normal');
+  if (slot === 'weapon') swordIcon(x + 22, y + 32, item ? RARITY[item.r].color : PAL.dim);
+  else armorIcon(x + 22, y + 32, item ? RARITY[item.r].color : PAL.dim);
+  if (!item) { text('비어 있음', x + 42, y + 32, 11, PAL.dim, 'left'); return; }
+  text(`${RARITY[item.r].name}${item.plus ? ' +' + item.plus : ''}`, x + 42, y + 24, 11, RARITY[item.r].color, 'left');
+  text(slot === 'weapon' ? `피해 +${gearPct(slot)}%` : `금화 +${gearPct(slot)}%`, x + 42, y + 38, 11, PAL.torchHi, 'left');
 }
 function drawGear() {
-  gearCard(10, PANEL_Y + 10, W / 2 - 15, state.gear.weapon, 'weapon', '무기');
-  gearCard(W / 2 + 5, PANEL_Y + 10, W / 2 - 15, state.gear.armor, 'armor', '갑옷');
+  const bs = buttons(), P = PANEL_Y;
+  ['weapon', 'armor'].forEach((s, i) => {
+    const g = state.gear[s]; gearCard(8 + i * 174, P + 6, 170, g, s);
+    const b = bs.find(x => x.id === 'enh:' + s);
+    if (!g) button(b, '장비 없음', null, false, false);
+    else if (g.plus >= tune.enhMax) button(b, '최대 강화', null, false, false);
+    else { const c = enhCost(g); button({ ...b }, `강화 +${g.plus + 1} · ${c}`, null, state.stones >= c, state.stones >= c); icon('gem', b.x + 8, b.y + 10, 1); }
+  });
   const d = state.drop;
-  if (!d) {
-    text('몬스터를 쓰러뜨리면 장비가 떨어진다.', W / 2, PANEL_Y + 120, 13, PAL.muted, 'center', 'normal');
-    text('보스는 반드시 희귀 이상을 떨어뜨린다.', W / 2, PANEL_Y + 142, 13, PAL.muted, 'center', 'normal');
-    return;
+  card(8, P + 92, W - 16, 62, d ? RARITY[d.r].color : '#5a4030', PAL.leatherHi);
+  if (d) {
+    if (d.slot === 'weapon') swordIcon(30, P + 122, RARITY[d.r].color); else armorIcon(30, P + 122, RARITY[d.r].color);
+    text(`새 ${RARITY[d.r].name} ${d.slot === 'weapon' ? '무기' : '갑옷'}`, 50, P + 108, 11, RARITY[d.r].color, 'left');
+    text(d.name, 50, P + 123, 11, PAL.ink, 'left', 'normal');
+    const diff = d.pct - gearPct(d.slot);
+    text(`지금보다 ${diff >= 0 ? '+' : ''}${diff}%`, 50, P + 138, 11, diff >= 0 ? PAL.good : PAL.threat, 'left');
+    button(bs.find(b => b.id === 'equip'), '장착 (Z)', null, true, diff >= 0);
+    button(bs.find(b => b.id === 'store'), '보관 (X)', null, true, false);
+  } else text('새 장비 없음 · 보스는 희귀 이상을 떨어뜨린다', W / 2, P + 123, 11, PAL.dim, 'center', 'normal');
+  card(8, P + 158, W - 16, 66, '#6a4a2a', PAL.leatherHi);
+  text('보관함', 18, P + 170, 11, PAL.trimHi, 'left');
+  ['weapon', 'armor'].forEach((s, i) => {
+    const y = P + 184 + i * 28, st = state.stash[s];
+    text(s === 'weapon' ? '무기' : '갑옷', 18, y, 11, PAL.muted, 'left', 'normal');
+    RARITY.forEach((r, k) => text(String(st[k]), 58 + k * 30, y, 11, st[k] ? r.color : PAL.dim, 'left'));
+    const m = mergeTarget(s);
+    button(bs.find(b => b.id === 'merge:' + s), m >= 0 ? `${RARITY[m].name}${tune.mergeNeed}→${RARITY[m + 1].name}` : `합성 (${tune.mergeNeed}개)`, null, m >= 0, m >= 0);
+  });
+}
+function drawAdventure() {
+  const bs = buttons(), P = PANEL_Y;
+  card(8, P + 6, W - 16, 60, '#6a3a8a', '#241830');
+  icon('door', 16, P + 16, 3);
+  text(`지하묘지 B${state.floor}`, 50, P + 18, 11, PAL.soul, 'left');
+  text(`보스 2 · ${tune.dungeonTime + frostBonus()}초`, 50, P + 33, 11, PAL.muted, 'left', 'normal');
+  text(`보상 강화석 ${tune.dungeonStones * state.floor * 2} · 두루마리 ${(tune.dungeonScrolls + Math.floor(state.floor / 2)) * 2}`, 50, P + 48, 11, PAL.gem, 'left', 'normal');
+  const okD = state.mode === 'stage' && state.keys > 0;
+  button(bs.find(b => b.id === 'dungeon'), '입장 (D)', `${state.keys}/${tune.keysMax}`, okD, okD, 'key');
+  const next = state.rank + 1, max = next >= RANKS.length;
+  card(8, P + 78, W - 16, 60, '#3a5a8a', '#18202e');
+  icon('crown', 16, P + 96, 3);
+  text(max ? `최고 서열 ${RANKS[state.rank]}` : `${RANKS[state.rank]} → ${RANKS[next]}`, 50, P + 90, 11, PAL.trimHi, 'left');
+  if (!max) {
+    text(`조건: 최고 스테이지 ${rankReq(next)} (지금 ${state.bestStage})`, 50, P + 105, 11, state.bestStage >= rankReq(next) ? PAL.good : PAL.muted, 'left', 'normal');
+    text(`보상: 모든 피해 x${tune.rankBonus}${next <= 2 ? ' · 스킬 슬롯' : ''}${SPIRITS.find(s => s.rank === next) ? ' · 정령' : ''}`, 50, P + 120, 11, PAL.gem, 'left', 'normal');
   }
-  text('새 장비', 14, PANEL_Y + 96, 13, PAL.ink, 'left');
-  gearCard(10, PANEL_Y + 106, W - 20, d, d.slot, d.slot === 'weapon' ? '무기' : '갑옷');
-  const diff = d.pct - gearPct(d.slot);
-  text(`지금보다 ${diff >= 0 ? '+' : ''}${diff}%`, W - 20, PANEL_Y + 158, 13, diff >= 0 ? '#7ad36a' : PAL.threat, 'right');
-  const bs = buttons();
-  button(bs.find(b => b.id === 'equip'), '장착 (Z)', null, true, diff >= 0);
-  button(bs.find(b => b.id === 'discard'), '버리기 (X)', null, true, false);
+  const okT = !max && state.mode === 'stage' && state.bestStage >= rankReq(next);
+  button(bs.find(b => b.id === 'trial'), '시험 (G)', null, okT, okT);
+  SPIRITS.forEach((sp, i) => {
+    const b = bs.find(x => x.id === 'spirit:' + sp.id), lv = spiritLv(sp.id), on = state.spirit === sp.id;
+    card(b.x, b.y, b.w, b.h + 28, on ? PAL.trimHi : lv ? PAL.trim : '#4a4040', on ? '#3a2818' : PAL.leatherHi);
+    drawSprite(sp.sprite, b.x + 18, b.y + 44, { dark: !lv });
+    text(lv ? `${sp.name}` : '???', b.x + 36, b.y + 12, 11, lv ? PAL.ink : PAL.dim, 'left');
+    text(lv ? `Lv${lv}${on ? ' · 장착' : ''}` : `${RANKS[sp.rank]}에 합류`, b.x + 36, b.y + 26, 11, on ? PAL.trimHi : PAL.muted, 'left', 'normal');
+    if (lv) text(sp.desc(lv), b.x + 36, b.y + 40, 11, PAL.gem, 'left', 'normal');
+    const ub = bs.find(x => x.id === 'spup:' + sp.id), c = spiritCost(sp.id);
+    if (lv) { button(ub, `강화 ${c}`, null, state.stones >= c, state.stones >= c); icon('gem', ub.x + 8, ub.y + 8, 1); }
+    else button(ub, '잠김', null, false, false);
+  });
+}
+function rewardText(r) {
+  return Object.entries(r).map(([k, v]) => `${{ stones: '강화석', scrolls: '두루마리', souls: '영혼석', keys: '열쇠' }[k]} ${k === 'keys' ? v : Math.ceil(v * tune.rewardScale)}`).join(' · ');
+}
+function drawQuests() {
+  const bs = buttons(), P = PANEL_Y;
+  bs.filter(b => b.id.startsWith('qv:')).forEach(b => {
+    const on = state.questView === b.id.slice(3);
+    card(b.x, b.y, b.w, b.h, on ? PAL.trimHi : '#5a4030', on ? '#5a2a14' : PAL.leatherHi);
+    text(b.label, b.x + b.w / 2, b.y + b.h / 2, 11, on ? PAL.trimHi : PAL.muted);
+    const v = b.id.slice(3), dot = v === 'attend' ? canAttend() : v === 'ach' ? ACH.some(achReady) : DAILY.some(q => dailyDone(q) && !state.daily.claimed[q.id]);
+    if (dot) { rect(b.x + b.w - 10, b.y + 3, 6, 6, '#0b0705'); rect(b.x + b.w - 9, b.y + 4, 4, 4, PAL.threat); }
+  });
+  const row = (y, title, sub, p, btn, label, ok, done) => {
+    card(8, y - 2, W - 16, 30, done ? '#3a5a3a' : '#5a4030', done ? '#1e2a1e' : PAL.leatherHi);
+    text(title, 16, y + 7, 11, done ? PAL.dim : PAL.ink, 'left');
+    text(sub, 16, y + 20, 11, PAL.gem, 'left', 'normal');
+    if (p !== null) bar(214, y + 12, 54, 4, p, PAL.torch);
+    button(btn, label, null, ok, ok);
+  };
+  if (state.questView === 'daily') {
+    DAILY.forEach((q, i) => {
+      const have = Math.min(state.daily.prog[q.id] || 0, tune[q.need]), got = state.daily.claimed[q.id];
+      row(P + 38 + i * 31, `${q.name} ${fmt(have)}/${fmt(tune[q.need])}`, rewardText(q.reward), have / tune[q.need], bs.find(b => b.id === 'qd:' + i), got ? '완료' : '받기', dailyDone(q) && !got, got);
+    });
+    const all = DAILY.every(q => state.daily.claimed[q.id]);
+    row(P + 193, '오늘의 임무 전부 완료', rewardText(DAILY_BONUS), null, bs.find(b => b.id === 'qbonus'), state.daily.bonus ? '완료' : '받기', all && !state.daily.bonus, state.daily.bonus);
+  }
+  if (state.questView === 'ach') ACH.forEach((a, i) => {
+    const tier = achTier(a), max = tier >= a.tiers.length, need = max ? a.tiers[a.tiers.length - 1] : a.tiers[tier];
+    row(P + 38 + i * 31, `${a.name} ${fmt(Math.min(a.of(), need))}/${fmt(need)}`, max ? '모든 단계 달성' : rewardText(a.reward(tier)), Math.min(1, a.of() / need), bs.find(b => b.id === 'qa:' + a.id), max ? '완료' : '받기', achReady(a), max);
+  });
+  if (state.questView === 'attend') {
+    const cur = state.attend.idx % ATTEND.length, can = canAttend();
+    ATTEND.forEach((r, i) => {
+      const x = 10 + (i % 4) * 86, y = P + 38 + Math.floor(i / 4) * 72, got = i < cur || (!can && i === cur - 1), today = can && i === cur;
+      card(x, y, 82, 66, today ? PAL.trimHi : got ? '#3a5a3a' : '#5a4030', today ? '#5a2a14' : got ? '#1e2a1e' : PAL.leatherHi);
+      text(`${i + 1}일째`, x + 41, y + 10, 11, today ? PAL.trimHi : PAL.muted);
+      const [k] = Object.keys(r); icon({ stones: 'gem', scrolls: 'scroll', souls: 'soul', keys: 'key' }[k], x + 32, y + 22, 2);
+      text(rewardText(r).replace(' · ', '\n').split('\n')[0], x + 41, y + 52, 11, got ? PAL.dim : PAL.ink);
+    });
+    button(bs.find(b => b.id === 'qatt'), can ? `오늘 출석하기 (${cur + 1}일째)` : '내일 다시 오세요', null, can, can);
+  }
 }
 function drawRebirth() {
-  const gain = embersFor(state.maxStage), ok = gain > 0;
-  flame(W / 2, PANEL_Y + 30, 2.2);
-  text(`잿불 ${state.embers}개 · 모든 피해·금화 x${fmt(emberMult())}`, W / 2, PANEL_Y + 62, 15, PAL.ember);
-  text('환생하면 스테이지·금화·레벨이 처음으로 돌아가지만', W / 2, PANEL_Y + 92, 12, PAL.muted, 'center', 'normal');
-  text('잿불이 남아 다음 행군이 더 강해진다. 장비는 유지된다.', W / 2, PANEL_Y + 110, 12, PAL.muted, 'center', 'normal');
-  text(`최고 스테이지 ${state.maxStage}`, W / 2, PANEL_Y + 138, 13, PAL.ink);
-  text(ok ? `지금 환생하면 잿불 +${gain}  →  x${fmt(1 + (state.embers + gain) * tune.emberBonus)}` : `스테이지 ${tune.prestigeMinStage}에 닿으면 환생할 수 있다`, W / 2, PANEL_Y + 158, 13, ok ? PAL.torchHi : PAL.dim);
-  const b = buttons().find(x => x.id === 'rebirth');
-  button(b, state.confirm > 0 ? '한 번 더 누르면 환생 (R)' : `환생하기 (R)`, null, ok, ok);
+  const gain = embersFor(state.maxStage), ok = gain > 0 && state.mode === 'stage', P = PANEL_Y;
+  card(8, P + 6, W - 16, 152, '#8a3a1a', PAL.leatherHi);
+  flame(W / 2, P + 30, 3);
+  text(`잿불 ${state.embers}개 · 모든 피해·금화 x${fmt(emberMult())}`, W / 2, P + 58, 11, PAL.ember);
+  text('환생하면 스테이지·금화·레벨이 처음으로 돌아간다.', W / 2, P + 80, 11, PAL.muted, 'center', 'normal');
+  text('서열·별·장비·스킬·정령·재료는 그대로 남는다.', W / 2, P + 96, 11, PAL.muted, 'center', 'normal');
+  text(`이번 행군 최고 스테이지 ${state.maxStage}`, W / 2, P + 118, 11, PAL.ink);
+  text(gain > 0 ? `지금 환생하면 잿불 +${gain}  →  x${fmt(1 + (state.embers + gain) * tune.emberBonus)}` : `스테이지 ${tune.prestigeMinStage}에 닿으면 환생할 수 있다`, W / 2, P + 138, 11, gain > 0 ? PAL.torchHi : PAL.dim);
+  button(buttons().find(x => x.id === 'rebirth'), state.confirm > 0 ? '한 번 더 누르면 환생 (R)' : '환생하기 (R)', null, ok, ok);
 }
-function drawAway() {
+function drawAway() { // the idle chest: what the vanguard gathered while you were gone
   const a = state.away; if (!a) return;
-  ctx.fillStyle = 'rgba(5,4,8,0.75)'; ctx.fillRect(0, 0, W, H);
-  panelBox(30, 220, W - 60, 170, '#1e1b22', PAL.torch);
-  text('선봉대는 쉬지 않았다', W / 2, 250, 17, PAL.torchHi);
-  text(`자리를 비운 ${fmtTime(a.secs)} 동안`, W / 2, 285, 13, PAL.muted, 'center', 'normal');
-  coin(W / 2 - 50, 318, 1.6); text(`+${fmt(a.gold)}`, W / 2 + 6, 318, 20, PAL.gold);
-  text('탭해서 받기', W / 2, 362, 13, PAL.ink);
+  ctx.fillStyle = 'rgba(5,4,8,0.78)'; ctx.fillRect(0, 0, W, H);
+  woodFrame(26, 170, W - 52, 270, '#2a1d16');
+  ribbon(W / 2, 162, 200, '방치 보상 상자');
+  const t = state.t, cx = W / 2, cy = 248; // a drawn chest, lid open, light pouring out
+  disc(cx, cy - 6, 34 + Math.round(Math.sin(t * 4) * 2), 'rgba(255,210,120,0.12)');
+  rect(cx - 30, cy - 4, 60, 30, '#0b0705'); rect(cx - 28, cy - 2, 56, 26, PAL.wood); rect(cx - 28, cy + 6, 56, 3, PAL.trim); rect(cx - 4, cy + 4, 8, 8, PAL.trimHi);
+  rect(cx - 30, cy - 22, 60, 16, '#0b0705'); rect(cx - 28, cy - 20, 56, 12, PAL.woodHi); rect(cx - 28, cy - 12, 56, 2, PAL.trim);
+  for (let k = 0; k < 6; k++) rect(cx - 20 + k * 8, cy - 30 - Math.round(Math.abs(Math.sin(t * 3 + k)) * 10), 2, 6, PAL.trimHi);
+  text(`자리를 비운 ${fmtTime(a.secs)} 동안 선봉대가 모은 것`, cx, 296, 11, PAL.muted, 'center', 'normal');
+  coin(cx - 60, 322, 2); text(`+${fmt(a.gold)}`, cx - 44, 322, 20, PAL.gold, 'left');
+  const items = [['gem', a.stones, PAL.gem], ['scroll', a.scrolls, PAL.scroll], ['soul', a.souls, PAL.soul]];
+  items.forEach(([ic, n, c], i) => { const x = cx - 90 + i * 64; icon(ic, x, 350, 2); text(`+${fmt(n)}`, x + 20, 358, 11, c, 'left'); });
+  textOutlined('탭해서 받기', cx, 410, 18, PAL.ink);
 }
 let resultsPending = 0;
 
 // ---- Fixed-step simulation of play --------------------------------------------------------
 function updatePlay(dt) {
   state.t += dt; state.playTime += dt;
+  state.dayT += dt; if (state.dayT > 60) { state.dayT = 0; checkDay(); }
   if (state.confirm > 0) state.confirm -= dt;
   if (state.toast && (state.toast.t -= dt) <= 0) state.toast = null;
-  // input
+  if (state.popup && (state.popup.t -= dt) <= 0) state.popup = null;
   if (state.away) {
-    if (taps.length || pressed('Space') || pressed('Enter')) { state.gold += state.away.gold; state.away = null; tone(660, 0.2, 'triangle', 0.2); }
+    if (taps.length || pressed('Space') || pressed('Enter')) {
+      const a = state.away; state.gold += a.gold; state.stones += a.stones; state.scrolls += a.scrolls; state.souls += a.souls;
+      state.away = null; tone(660, 0.2, 'triangle', 0.2); tone(990, 0.3, 'triangle', 0.2);
+      if (canAttend()) toast('출석 보상을 받을 수 있다 (임무 탭)', PAL.trimHi);
+    }
     taps.length = 0; return;
   }
   for (const p of taps) {
@@ -706,13 +1321,32 @@ function updatePlay(dt) {
   taps.length = 0;
   if (pressed('Space')) tapAttack();
   ['Digit1', 'Digit2', 'Digit3', 'Digit4'].forEach((k, i) => { if (pressed(k)) { state.tab = 'party'; buyHero(i); } });
-  if (pressed('KeyQ')) state.tab = 'party';
-  if (pressed('KeyW')) state.tab = 'gear';
-  if (pressed('KeyE')) state.tab = 'rebirth';
+  [['KeyQ', 'party'], ['KeyW', 'skill'], ['KeyE', 'gear'], ['KeyA', 'adv'], ['KeyF', 'quest'], ['KeyS', 'rebirth']].forEach(([k, tb]) => { if (pressed(k)) state.tab = tb; });
+  ['KeyZ', 'KeyX', 'KeyC'].forEach((k, i) => {
+    if (!pressed(k)) return;
+    if (state.tab === 'gear' && state.drop && i < 2) { i === 0 ? equipDrop() : storeDrop(); return; }
+    const id = state.slots[i]; if (id) castSkill(id);
+  });
   if (pressed('KeyB')) challengeBoss();
-  if (pressed('KeyZ')) equipDrop();
-  if (pressed('KeyX')) state.drop = null;
+  if (pressed('KeyD')) enterDungeon();
+  if (pressed('KeyG')) startTrial();
   if (pressed('KeyR') && state.tab === 'rebirth') rebirth();
+  // keys come back with time
+  if (state.keys < tune.keysMax) { state.keyT += dt; if (state.keyT >= tune.keyRegen) { state.keyT = 0; state.keys++; } } else state.keyT = 0;
+  // buffs and skill cooldowns
+  for (const k in state.buffs) if (state.buffs[k] > 0) state.buffs[k] -= dt;
+  for (const k in state.skillCd) if (state.skillCd[k] > 0) state.skillCd[k] -= dt;
+  if (state.buffs.burn > 0 && targetable()) damage(totalDps() * dt * skillK('storm'), false, PAL.ember);
+  if (state.buffs.cry > 0) { state.cryTap += dt * tune.cryTaps; while (state.cryTap >= 1) { state.cryTap--; if (targetable()) tapAttack(undefined, undefined, true); } }
+  if (state.rain) {
+    state.rain.t -= dt;
+    if (state.rain.t <= 0 && state.rain.n > 0) {
+      state.rain.t = 0.18; state.rain.n--;
+      state.shots.push({ kind: 'fall', x0: enemyX() - 30 + rng() * 60, y0: HUD_H, x1: enemyX() + (rng() - 0.5) * 20, y1: groundY() - 24, arc: 0, t: 0, dur: 0.22, dmg: totalDps() * tune.rainPower * skillK('rain'), color: PAL.good });
+    }
+    if (state.rain.n <= 0) state.rain = null;
+  }
+  if (state.autoSkill) for (let i = 0; i < slotsOpen(); i++) { const id = state.slots[i]; if (id && !(state.skillCd[id] > 0)) castSkill(id); }
   // marching between enemies
   const e = state.enemy;
   if (!e) {
@@ -723,13 +1357,15 @@ function updatePlay(dt) {
   } else {
     if (e.x > 0) { e.x = Math.max(0, e.x - dt / tune.enemyWalkIn); state.scroll += dt * 60; }
     if (e.flash > 0) e.flash -= dt;
-    if (e.boss) {
-      e.lunge = (e.lunge + dt) % 2.2;
-      state.bossT -= dt; if (state.bossT <= 0) { failBoss(); }
-    }
+    if (e.boss) e.lunge = (e.lunge + dt) % 2.2;
+    if (e.boss && state.mode === 'stage') { state.bossT -= dt; if (state.bossT <= 0) failBoss(); }
   }
-  // party attacks on their own clocks
-  const target = state.enemy && !state.enemy.dead && state.enemy.x <= 0.05;
+  if (state.mode !== 'stage') {
+    state.modeT -= dt;
+    if (state.modeT <= 0) { if (state.mode === 'trial') { leaveMode(false); popup('시험 실패', ['더 강해져서 다시 도전하라'], PAL.muted); } else leaveMode(false); }
+  }
+  // the party attacks on its own clocks
+  const target = targetable();
   for (const h of HEROES) {
     state.anim[h.id] = Math.max(0, state.anim[h.id] - dt);
     const dps = heroDps(h); if (!dps) continue;
@@ -738,7 +1374,7 @@ function updatePlay(dt) {
     state.cd[h.id] += tune[h.every];
     const hit = dps * tune[h.every], x0 = heroX(h.id), gy = groundY();
     if (h.id === 'knight') { state.anim.knight = 0.18; damage(hit, false, PAL.ink); tone(300, 0.05, 'square', 0.06); }
-    if (h.id === 'archer') { state.anim.archer = 0.12; state.shots.push({ kind: 'arrow', x0: x0 + 12, y0: gy - 34, x1: enemyX(), y1: gy - 30, arc: 14, t: 0, dur: 0.25, dmg: hit, color: '#9ee08a' }); tone(1200, 0.03, 'triangle', 0.05); }
+    if (h.id === 'archer') { state.anim.archer = 0.12; state.shots.push({ kind: 'arrow', x0: x0 + 12, y0: gy - 34, x1: enemyX(), y1: gy - 30, arc: 14, t: 0, dur: 0.25, dmg: hit, color: PAL.good }); tone(1200, 0.03, 'triangle', 0.05); }
     if (h.id === 'cleric') { state.anim.cleric = 0.4; state.sparks.push({ x: enemyX(), y: 0, t: 0, pillar: true, vx: 0, vy: 0 }); damage(hit, false, PAL.holy); tone(880, 0.2, 'sine', 0.08); }
     if (h.id === 'pyro') { state.anim.pyro = 0.3; state.shots.push({ kind: 'fire', x0: x0 + 16, y0: gy - 36, x1: enemyX(), y1: gy - 28, arc: 40, t: 0, dur: 0.45, dmg: hit, color: PAL.ember }); tone(160, 0.25, 'sawtooth', 0.08); }
   }
@@ -746,9 +1382,10 @@ function updatePlay(dt) {
   state.shots = state.shots.filter(s => !s.done);
   for (const p of state.sparks) { p.t += dt; p.x += p.vx * dt; p.y += p.vy * dt; p.vy += 300 * dt; }
   state.sparks = state.sparks.filter(p => p.t < (p.pillar ? 0.45 : p.slash ? 0.2 : 0.7));
+  for (const f of state.fx) f.t += dt;
+  state.fx = state.fx.filter(f => f.t < 0.8);
   for (const f of state.floats) f.t += dt;
   state.floats = state.floats.filter(f => f.t < 0.9);
-  // save on the step clock
   state.saveT += dt; if (state.saveT >= tune.saveEvery) { state.saveT = 0; save(); }
   if (resultsPending > 0 && (resultsPending -= dt) <= 0) { scene = 'results'; save(); }
 }
@@ -757,25 +1394,22 @@ const scenes = {
   figures: {
     update(dt) { state.t += dt; },
     draw() {
-      clear('#1a1820');
-      text('잿빛 선봉대: 등장 인물', W / 2, 22, 15, PAL.ink);
-      const rows = [
-        HEROES.map(h => [h.id, h.name]),
-        ENEMIES.map(e => [e.id, e.name]),
-      ];
+      clear('#1a1410');
+      ribbon(W / 2, 6, 200, '잿빛 선봉대: 등장 인물');
+      const rows = [HEROES.map(h => [h.id, h.name]), ENEMIES.map(e => [e.id, e.name])];
       rows.forEach((row, r) => row.forEach(([id, name], i) => {
-        const x = 46 + i * 89, y = 140 + r * 130;
-        ctx.fillStyle = '#00000044'; ctx.fillRect(x - 40, y - 100, 80, 118);
-        drawSprite(id, x, y); text(name, x, y + 12, 11, PAL.ink);
+        const x = 46 + i * 89, y = 106 + r * 96;
+        card(x - 42, y - 76, 84, 92, '#6a4a2a', '#241a14'); drawSprite(id, x, y - 4); text(name, x, y + 8, 11, PAL.ink);
       }));
-      BOSSES.forEach((b, i) => { const x = 62 + i * 118, y = 470; drawSprite(b.id, x, y, { scale: 0.9 }); text(b.name, x, y + 14, 12, PAL.threat); });
+      SPIRITS.forEach((sp, i) => { const x = 60 + i * 120; drawSprite(sp.sprite, x, 256); text(sp.name, x, 262, 11, PAL.gem); });
+      const big = [...BOSSES, ...CRYPT, EXAMINER];
+      big.forEach((b, i) => { const x = 62 + (i % 3) * 118, y = 400 + Math.floor(i / 3) * 150; drawSprite(b.id, x, y); text(b.name, x, y + 10, 11, PAL.threat); });
     },
   },
   title: {
     update() {
       const t = taps.shift(); taps.length = 0;
-      const newGame = (t && t.y > 560) || pressed('KeyN');
-      if (newGame) { reset(); scene = 'play'; return; }
+      if ((t && t.y > 572) || pressed('KeyN')) { reset(); scene = 'play'; return; }
       if (t || pressed('Enter') || pressed('Space')) {
         const s = hasSave && loadSave();
         if (s) continueSave(s); else reset();
@@ -785,16 +1419,18 @@ const scenes = {
     draw() {
       const t = clock.now();
       clear('#07070a');
-      const gr = 200 + Math.round(Math.sin(t * 9) * 4); // stepped torch glow
+      const gr = 200 + Math.round(Math.sin(t * 9) * 4);
       [[1, 0.05], [0.75, 0.07], [0.5, 0.09], [0.28, 0.12]].forEach(([k, al]) => disc(W / 2, 330, Math.round(gr * k), `rgba(255,140,60,${al})`));
       rect(0, 360, W, 4, '#2a2420');
-      drawSprite('knight', W / 2, 362, { scale: 1.5 });
-      textOutlined(TITLE, W / 2, 120, 40, PAL.torchHi);
-      text('ASHEN VANGUARD', W / 2, 158, 13, PAL.muted);
-      CONTROLS.forEach((c, i) => text(c, W / 2, 400 + i * 24, 13, PAL.muted, 'center', 'normal'));
-      const a = 0.6 + Math.sin(t * 4) * 0.4; ctx.globalAlpha = a;
-      text(hasSave ? '탭해서 이어하기 (Enter)' : '탭해서 시작 (Enter)', W / 2, 530, 18, PAL.ink); ctx.globalAlpha = 1;
-      if (hasSave) text('여기를 누르면 새로 시작 (N)', W / 2, 590, 13, PAL.dim);
+      drawSprite('knight', W / 2 - 30, 362, { scale: 2 });
+      drawSprite('spirit_fire', W / 2 + 56, 310 + Math.round(Math.sin(t * 3) * 4));
+      woodFrame(40, 70, W - 80, 96, '#1a120e');
+      textOutlined(TITLE, W / 2, 108, 40, PAL.torchHi);
+      ribbon(W / 2, 140, 160, 'ASHEN VANGUARD');
+      CONTROLS.forEach((c, i) => text(c, W / 2, 396 + i * 20, 11, PAL.muted, 'center', 'normal'));
+      ctx.globalAlpha = 0.6 + Math.sin(t * 4) * 0.4;
+      textOutlined(hasSave ? '탭해서 이어하기 (Enter)' : '탭해서 시작 (Enter)', W / 2, 530, 18, PAL.ink); ctx.globalAlpha = 1;
+      if (hasSave) text('여기를 누르면 새로 시작 (N)', W / 2, 600, 11, PAL.dim);
     },
   },
   play: {
@@ -802,30 +1438,26 @@ const scenes = {
       if (pressed('KeyP') || pressed('Escape')) { scene = 'pause'; return; }
       updatePlay(dt);
     },
-    draw() {
-      clear('#07070a');
-      drawField(); drawHud(); drawStrip(); drawPanel(); drawAway();
-    },
+    draw() { clear('#07070a'); drawField(); drawHud(); drawStrip(); drawPanel(); drawAway(); },
   },
   pause: {
     update() { const t = taps.length; taps.length = 0; if (t || pressed('KeyP') || pressed('Escape')) scene = 'play'; },
     draw() {
       scenes.play.draw(); ctx.fillStyle = 'rgba(5,4,8,0.7)'; ctx.fillRect(0, 0, W, H);
-      textOutlined('일시정지', W / 2, H / 2 - 20, 30, PAL.ink); text('탭하거나 P로 계속', W / 2, H / 2 + 20, 14, PAL.muted);
+      woodFrame(70, H / 2 - 50, W - 140, 90, '#1a120e');
+      textOutlined('일시정지', W / 2, H / 2 - 14, 20, PAL.ink); text('탭하거나 P로 계속', W / 2, H / 2 + 18, 11, PAL.muted);
     },
   },
   results: {
-    update() {
-      const t = taps.length; taps.length = 0;
-      if (t || pressed('Enter')) { scene = 'play'; }
-    },
+    update() { const t = taps.length; taps.length = 0; if (t || pressed('Enter')) scene = 'play'; },
     draw() {
       scenes.play.draw(); ctx.fillStyle = 'rgba(5,4,8,0.8)'; ctx.fillRect(0, 0, W, H);
-      flame(W / 2, 200, 3);
-      textOutlined('잿불의 군주가 쓰러졌다', W / 2, 260, 22, PAL.torchHi);
-      text(`걸린 시간 ${fmtTime(state.playTime)} · 환생 ${state.rebirths}회`, W / 2, 300, 14, PAL.ink, 'center', 'normal');
-      text(`잿불 ${state.embers}개 · 최고 스테이지 ${state.maxStage}`, W / 2, 324, 14, PAL.ink, 'center', 'normal');
-      text('행군은 계속된다. 탭해서 계속 (Enter)', W / 2, 380, 14, PAL.muted);
+      woodFrame(24, 170, W - 48, 230, '#1a120e');
+      flame(W / 2, 214, 3);
+      ribbon(W / 2, 248, 220, '잿불의 군주가 쓰러졌다');
+      text(`걸린 시간 ${fmtTime(state.playTime)} · 환생 ${state.rebirths}회`, W / 2, 290, 11, PAL.ink, 'center', 'normal');
+      text(`잿불 ${state.embers}개 · 서열 ${RANKS[state.rank]} · 최고 스테이지 ${state.bestStage}`, W / 2, 310, 11, PAL.ink, 'center', 'normal');
+      text('행군은 계속된다. 탭해서 계속 (Enter)', W / 2, 360, 11, PAL.muted);
     },
   },
 };

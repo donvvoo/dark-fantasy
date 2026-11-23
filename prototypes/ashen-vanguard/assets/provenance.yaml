@@ -1,88 +1,212 @@
 # Where each file in assets/ and vendor/ came from, one entry per file. The field names are the
 # provenance record's, so the entries carry over when the game grows.
-# - path: assets/hit.wav      # relative to this game's folder
-#   origin: ai                # ai | bought | cc0 | you | outsourced | template | plugin | licensed | code | unknown
-#   tool: "what made or fetched it: the generator, or the script for code"
-#   model: "the model ID, when a model made it or an AI wrote its code"
-#   source: {vendor: "who made or sold it", product: "its name", url: "where from"}   # a download
-#   licence: {id: CC0-1.0}    # a download: the SPDX id where one exists
-#   date: 2026-01-31
-#   ships: true               # false for a file only the build uses
-#   placeholder: true         # until it is replaced; leave the line out otherwise
-- path: assets/knight.png
+# - path: assets/archer.png
   origin: ai
-  tool: "PixelLab API v1 generate-image-pixflux (prompt in the style of the person's reference sprite zip: 2-head SD chibi, three-quarter view, thick black outline, flat retro palette; 32px, bosses 64px)"
-  model: "pixflux"
-  source: {vendor: "PixelLab", product: "PixelLab API", url: "https://api.pixellab.ai"}
-  date: 2026-11-23
-  ships: true
-- path: assets/archer.png
-  origin: ai
-  tool: "PixelLab API v1 generate-image-pixflux (prompt in the style of the person's reference sprite zip: 2-head SD chibi, three-quarter view, thick black outline, flat retro palette; 32px, bosses 64px)"
-  model: "pixflux"
-  source: {vendor: "PixelLab", product: "PixelLab API", url: "https://api.pixellab.ai"}
-  date: 2026-11-23
-  ships: true
-- path: assets/cleric.png
-  origin: ai
-  tool: "PixelLab API v1 generate-image-pixflux (prompt in the style of the person's reference sprite zip: 2-head SD chibi, three-quarter view, thick black outline, flat retro palette; 32px, bosses 64px)"
-  model: "pixflux"
-  source: {vendor: "PixelLab", product: "PixelLab API", url: "https://api.pixellab.ai"}
-  date: 2026-11-23
-  ships: true
-- path: assets/pyro.png
-  origin: ai
-  tool: "PixelLab API v1 generate-image-pixflux (prompt in the style of the person's reference sprite zip: 2-head SD chibi, three-quarter view, thick black outline, flat retro palette; 32px, bosses 64px)"
-  model: "pixflux"
-  source: {vendor: "PixelLab", product: "PixelLab API", url: "https://api.pixellab.ai"}
-  date: 2026-11-23
-  ships: true
-- path: assets/skeleton.png
-  origin: ai
-  tool: "PixelLab API v1 generate-image-pixflux (prompt in the style of the person's reference sprite zip: 2-head SD chibi, three-quarter view, thick black outline, flat retro palette; 32px, bosses 64px)"
-  model: "pixflux"
-  source: {vendor: "PixelLab", product: "PixelLab API", url: "https://api.pixellab.ai"}
-  date: 2026-11-23
-  ships: true
-- path: assets/ghoul.png
-  origin: ai
-  tool: "PixelLab API v1 generate-image-pixflux (prompt in the style of the person's reference sprite zip: 2-head SD chibi, three-quarter view, thick black outline, flat retro palette; 32px, bosses 64px)"
-  model: "pixflux"
+  tool: "PixelLab API v2 create-image-pro-flash / generate-ui-v2 (original designs: 2-2.5 head SD heroes facing front-right, monsters and bosses facing front-left, spirits, skill icons, fantasy UI parts)"
+  model: "pixellab-pro-flash"
   source: {vendor: "PixelLab", product: "PixelLab API", url: "https://api.pixellab.ai"}
   date: 2026-11-23
   ships: true
 - path: assets/bat.png
   origin: ai
-  tool: "PixelLab API v1 generate-image-pixflux (prompt in the style of the person's reference sprite zip: 2-head SD chibi, three-quarter view, thick black outline, flat retro palette; 32px, bosses 64px)"
-  model: "pixflux"
+  tool: "PixelLab API v2 create-image-pro-flash / generate-ui-v2 (original designs: 2-2.5 head SD heroes facing front-right, monsters and bosses facing front-left, spirits, skill icons, fantasy UI parts)"
+  model: "pixellab-pro-flash"
   source: {vendor: "PixelLab", product: "PixelLab API", url: "https://api.pixellab.ai"}
   date: 2026-11-23
   ships: true
-- path: assets/cultist.png
+- path: assets/boss_examiner.png
   origin: ai
-  tool: "PixelLab API v1 generate-image-pixflux (prompt in the style of the person's reference sprite zip: 2-head SD chibi, three-quarter view, thick black outline, flat retro palette; 32px, bosses 64px)"
-  model: "pixflux"
-  source: {vendor: "PixelLab", product: "PixelLab API", url: "https://api.pixellab.ai"}
-  date: 2026-11-23
-  ships: true
-- path: assets/boss_rider.png
-  origin: ai
-  tool: "PixelLab API v1 generate-image-pixflux (prompt in the style of the person's reference sprite zip: 2-head SD chibi, three-quarter view, thick black outline, flat retro palette; 32px, bosses 64px)"
-  model: "pixflux"
-  source: {vendor: "PixelLab", product: "PixelLab API", url: "https://api.pixellab.ai"}
-  date: 2026-11-23
-  ships: true
-- path: assets/boss_priest.png
-  origin: ai
-  tool: "PixelLab API v1 generate-image-pixflux (prompt in the style of the person's reference sprite zip: 2-head SD chibi, three-quarter view, thick black outline, flat retro palette; 32px, bosses 64px)"
-  model: "pixflux"
+  tool: "PixelLab API v2 create-image-pro-flash / generate-ui-v2 (original designs: 2-2.5 head SD heroes facing front-right, monsters and bosses facing front-left, spirits, skill icons, fantasy UI parts)"
+  model: "pixellab-pro-flash"
   source: {vendor: "PixelLab", product: "PixelLab API", url: "https://api.pixellab.ai"}
   date: 2026-11-23
   ships: true
 - path: assets/boss_lord.png
   origin: ai
-  tool: "PixelLab API v1 generate-image-pixflux (prompt in the style of the person's reference sprite zip: 2-head SD chibi, three-quarter view, thick black outline, flat retro palette; 32px, bosses 64px)"
-  model: "pixflux"
+  tool: "PixelLab API v2 create-image-pro-flash / generate-ui-v2 (original designs: 2-2.5 head SD heroes facing front-right, monsters and bosses facing front-left, spirits, skill icons, fantasy UI parts)"
+  model: "pixellab-pro-flash"
+  source: {vendor: "PixelLab", product: "PixelLab API", url: "https://api.pixellab.ai"}
+  date: 2026-11-23
+  ships: true
+- path: assets/boss_priest.png
+  origin: ai
+  tool: "PixelLab API v2 create-image-pro-flash / generate-ui-v2 (original designs: 2-2.5 head SD heroes facing front-right, monsters and bosses facing front-left, spirits, skill icons, fantasy UI parts)"
+  model: "pixellab-pro-flash"
+  source: {vendor: "PixelLab", product: "PixelLab API", url: "https://api.pixellab.ai"}
+  date: 2026-11-23
+  ships: true
+- path: assets/boss_rider.png
+  origin: ai
+  tool: "PixelLab API v2 create-image-pro-flash / generate-ui-v2 (original designs: 2-2.5 head SD heroes facing front-right, monsters and bosses facing front-left, spirits, skill icons, fantasy UI parts)"
+  model: "pixellab-pro-flash"
+  source: {vendor: "PixelLab", product: "PixelLab API", url: "https://api.pixellab.ai"}
+  date: 2026-11-23
+  ships: true
+- path: assets/boss_warden.png
+  origin: ai
+  tool: "PixelLab API v2 create-image-pro-flash / generate-ui-v2 (original designs: 2-2.5 head SD heroes facing front-right, monsters and bosses facing front-left, spirits, skill icons, fantasy UI parts)"
+  model: "pixellab-pro-flash"
+  source: {vendor: "PixelLab", product: "PixelLab API", url: "https://api.pixellab.ai"}
+  date: 2026-11-23
+  ships: true
+- path: assets/boss_wyrm.png
+  origin: ai
+  tool: "PixelLab API v2 create-image-pro-flash / generate-ui-v2 (original designs: 2-2.5 head SD heroes facing front-right, monsters and bosses facing front-left, spirits, skill icons, fantasy UI parts)"
+  model: "pixellab-pro-flash"
+  source: {vendor: "PixelLab", product: "PixelLab API", url: "https://api.pixellab.ai"}
+  date: 2026-11-23
+  ships: true
+- path: assets/cleric.png
+  origin: ai
+  tool: "PixelLab API v2 create-image-pro-flash / generate-ui-v2 (original designs: 2-2.5 head SD heroes facing front-right, monsters and bosses facing front-left, spirits, skill icons, fantasy UI parts)"
+  model: "pixellab-pro-flash"
+  source: {vendor: "PixelLab", product: "PixelLab API", url: "https://api.pixellab.ai"}
+  date: 2026-11-23
+  ships: true
+- path: assets/cultist.png
+  origin: ai
+  tool: "PixelLab API v2 create-image-pro-flash / generate-ui-v2 (original designs: 2-2.5 head SD heroes facing front-right, monsters and bosses facing front-left, spirits, skill icons, fantasy UI parts)"
+  model: "pixellab-pro-flash"
+  source: {vendor: "PixelLab", product: "PixelLab API", url: "https://api.pixellab.ai"}
+  date: 2026-11-23
+  ships: true
+- path: assets/ghoul.png
+  origin: ai
+  tool: "PixelLab API v2 create-image-pro-flash / generate-ui-v2 (original designs: 2-2.5 head SD heroes facing front-right, monsters and bosses facing front-left, spirits, skill icons, fantasy UI parts)"
+  model: "pixellab-pro-flash"
+  source: {vendor: "PixelLab", product: "PixelLab API", url: "https://api.pixellab.ai"}
+  date: 2026-11-23
+  ships: true
+- path: assets/icon_cry.png
+  origin: ai
+  tool: "PixelLab API v2 create-image-pro-flash / generate-ui-v2 (original designs: 2-2.5 head SD heroes facing front-right, monsters and bosses facing front-left, spirits, skill icons, fantasy UI parts)"
+  model: "pixellab-pro-flash"
+  source: {vendor: "PixelLab", product: "PixelLab API", url: "https://api.pixellab.ai"}
+  date: 2026-11-23
+  ships: true
+- path: assets/icon_gold.png
+  origin: ai
+  tool: "PixelLab API v2 create-image-pro-flash / generate-ui-v2 (original designs: 2-2.5 head SD heroes facing front-right, monsters and bosses facing front-left, spirits, skill icons, fantasy UI parts)"
+  model: "pixellab-pro-flash"
+  source: {vendor: "PixelLab", product: "PixelLab API", url: "https://api.pixellab.ai"}
+  date: 2026-11-23
+  ships: true
+- path: assets/icon_rain.png
+  origin: ai
+  tool: "PixelLab API v2 create-image-pro-flash / generate-ui-v2 (original designs: 2-2.5 head SD heroes facing front-right, monsters and bosses facing front-left, spirits, skill icons, fantasy UI parts)"
+  model: "pixellab-pro-flash"
+  source: {vendor: "PixelLab", product: "PixelLab API", url: "https://api.pixellab.ai"}
+  date: 2026-11-23
+  ships: true
+- path: assets/icon_sanct.png
+  origin: ai
+  tool: "PixelLab API v2 create-image-pro-flash / generate-ui-v2 (original designs: 2-2.5 head SD heroes facing front-right, monsters and bosses facing front-left, spirits, skill icons, fantasy UI parts)"
+  model: "pixellab-pro-flash"
+  source: {vendor: "PixelLab", product: "PixelLab API", url: "https://api.pixellab.ai"}
+  date: 2026-11-23
+  ships: true
+- path: assets/icon_slash.png
+  origin: ai
+  tool: "PixelLab API v2 create-image-pro-flash / generate-ui-v2 (original designs: 2-2.5 head SD heroes facing front-right, monsters and bosses facing front-left, spirits, skill icons, fantasy UI parts)"
+  model: "pixellab-pro-flash"
+  source: {vendor: "PixelLab", product: "PixelLab API", url: "https://api.pixellab.ai"}
+  date: 2026-11-23
+  ships: true
+- path: assets/icon_storm.png
+  origin: ai
+  tool: "PixelLab API v2 create-image-pro-flash / generate-ui-v2 (original designs: 2-2.5 head SD heroes facing front-right, monsters and bosses facing front-left, spirits, skill icons, fantasy UI parts)"
+  model: "pixellab-pro-flash"
+  source: {vendor: "PixelLab", product: "PixelLab API", url: "https://api.pixellab.ai"}
+  date: 2026-11-23
+  ships: true
+- path: assets/knight.png
+  origin: ai
+  tool: "PixelLab API v2 create-image-pro-flash / generate-ui-v2 (original designs: 2-2.5 head SD heroes facing front-right, monsters and bosses facing front-left, spirits, skill icons, fantasy UI parts)"
+  model: "pixellab-pro-flash"
+  source: {vendor: "PixelLab", product: "PixelLab API", url: "https://api.pixellab.ai"}
+  date: 2026-11-23
+  ships: true
+- path: assets/pyro.png
+  origin: ai
+  tool: "PixelLab API v2 create-image-pro-flash / generate-ui-v2 (original designs: 2-2.5 head SD heroes facing front-right, monsters and bosses facing front-left, spirits, skill icons, fantasy UI parts)"
+  model: "pixellab-pro-flash"
+  source: {vendor: "PixelLab", product: "PixelLab API", url: "https://api.pixellab.ai"}
+  date: 2026-11-23
+  ships: true
+- path: assets/skeleton.png
+  origin: ai
+  tool: "PixelLab API v2 create-image-pro-flash / generate-ui-v2 (original designs: 2-2.5 head SD heroes facing front-right, monsters and bosses facing front-left, spirits, skill icons, fantasy UI parts)"
+  model: "pixellab-pro-flash"
+  source: {vendor: "PixelLab", product: "PixelLab API", url: "https://api.pixellab.ai"}
+  date: 2026-11-23
+  ships: true
+- path: assets/spirit_fire.png
+  origin: ai
+  tool: "PixelLab API v2 create-image-pro-flash / generate-ui-v2 (original designs: 2-2.5 head SD heroes facing front-right, monsters and bosses facing front-left, spirits, skill icons, fantasy UI parts)"
+  model: "pixellab-pro-flash"
+  source: {vendor: "PixelLab", product: "PixelLab API", url: "https://api.pixellab.ai"}
+  date: 2026-11-23
+  ships: true
+- path: assets/spirit_frost.png
+  origin: ai
+  tool: "PixelLab API v2 create-image-pro-flash / generate-ui-v2 (original designs: 2-2.5 head SD heroes facing front-right, monsters and bosses facing front-left, spirits, skill icons, fantasy UI parts)"
+  model: "pixellab-pro-flash"
+  source: {vendor: "PixelLab", product: "PixelLab API", url: "https://api.pixellab.ai"}
+  date: 2026-11-23
+  ships: true
+- path: assets/spirit_light.png
+  origin: ai
+  tool: "PixelLab API v2 create-image-pro-flash / generate-ui-v2 (original designs: 2-2.5 head SD heroes facing front-right, monsters and bosses facing front-left, spirits, skill icons, fantasy UI parts)"
+  model: "pixellab-pro-flash"
+  source: {vendor: "PixelLab", product: "PixelLab API", url: "https://api.pixellab.ai"}
+  date: 2026-11-23
+  ships: true
+- path: assets/ui_btn.png
+  origin: ai
+  tool: "PixelLab API v2 generate-ui-v2 (fantasy UI part, cropped to content)"
+  model: "pixellab-ui-v2"
+  source: {vendor: "PixelLab", product: "PixelLab API", url: "https://api.pixellab.ai"}
+  date: 2026-11-23
+  ships: true
+- path: assets/ui_btn_hot.png
+  origin: ai
+  tool: "PixelLab API v2 generate-ui-v2 (fantasy UI part, cropped to content)"
+  model: "pixellab-ui-v2"
+  source: {vendor: "PixelLab", product: "PixelLab API", url: "https://api.pixellab.ai"}
+  date: 2026-11-23
+  ships: true
+- path: assets/ui_btn_off.png
+  origin: ai
+  tool: "PixelLab API v2 generate-ui-v2 (fantasy UI part, cropped to content)"
+  model: "pixellab-ui-v2"
+  source: {vendor: "PixelLab", product: "PixelLab API", url: "https://api.pixellab.ai"}
+  date: 2026-11-23
+  ships: true
+- path: assets/ui_card.png
+  origin: ai
+  tool: "PixelLab API v2 generate-ui-v2 (fantasy UI part, cropped to content)"
+  model: "pixellab-ui-v2"
+  source: {vendor: "PixelLab", product: "PixelLab API", url: "https://api.pixellab.ai"}
+  date: 2026-11-23
+  ships: true
+- path: assets/ui_panel.png
+  origin: ai
+  tool: "PixelLab API v2 generate-ui-v2 (fantasy UI part, cropped to content)"
+  model: "pixellab-ui-v2"
+  source: {vendor: "PixelLab", product: "PixelLab API", url: "https://api.pixellab.ai"}
+  date: 2026-11-23
+  ships: true
+- path: assets/ui_ribbon.png
+  origin: ai
+  tool: "PixelLab API v2 generate-ui-v2 (fantasy UI part, cropped to content)"
+  model: "pixellab-ui-v2"
+  source: {vendor: "PixelLab", product: "PixelLab API", url: "https://api.pixellab.ai"}
+  date: 2026-11-23
+  ships: true
+- path: assets/ui_tab.png
+  origin: ai
+  tool: "PixelLab API v2 generate-ui-v2 (fantasy UI part, cropped to content)"
+  model: "pixellab-ui-v2"
   source: {vendor: "PixelLab", product: "PixelLab API", url: "https://api.pixellab.ai"}
   date: 2026-11-23
   ships: true

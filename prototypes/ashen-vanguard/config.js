@@ -66,4 +66,84 @@ window.CONFIG = {
   offlineRate:   { value: 0.5,  min: 0,    max: 1,    step: 0.05 },  // share of the awake gold rate
   offlineCapHours:{ value: 8,   min: 1,    max: 48,   step: 1 },
   saveEvery:     { value: 5,    min: 1,    max: 60,   step: 1 },     // seconds between saves
+
+  // ---- Skills (잿불 기술): cooldown in seconds, power as multiples of party dps ----
+  skillLvStep:   { value: 0.2,  min: 0.05, max: 1,    step: 0.05 },  // +effect per skill level
+  slashCd:       { value: 8,    min: 1,    max: 60,   step: 1 },
+  slashPower:    { value: 6,    min: 1,    max: 50,   step: 0.5 },   // x party dps, plus 5 taps
+  rainCd:        { value: 14,   min: 1,    max: 60,   step: 1 },
+  rainPower:     { value: 1.2,  min: 0.1,  max: 10,   step: 0.1 },   // x party dps, per arrow (6 arrows)
+  sanctCd:       { value: 22,   min: 1,    max: 90,   step: 1 },
+  sanctBoost:    { value: 0.5,  min: 0.1,  max: 3,    step: 0.05 },  // +party dps while it lasts
+  sanctTime:     { value: 8,    min: 1,    max: 30,   step: 1 },
+  stormCd:       { value: 18,   min: 1,    max: 90,   step: 1 },
+  stormPower:    { value: 15,   min: 1,    max: 80,   step: 1 },
+  cryCd:         { value: 25,   min: 1,    max: 90,   step: 1 },
+  cryTime:       { value: 8,    min: 1,    max: 30,   step: 1 },
+  cryTaps:       { value: 6,    min: 1,    max: 20,   step: 1 },     // automatic taps a second while it lasts
+  goldCd:        { value: 40,   min: 5,    max: 120,  step: 1 },
+  goldTime:      { value: 12,   min: 1,    max: 60,   step: 1 },
+  slashUnlock:   { value: 1,    min: 1,    max: 100,  step: 1 },     // furthest stage that unlocks each skill
+  rainUnlock:    { value: 5,    min: 1,    max: 100,  step: 1 },
+  sanctUnlock:   { value: 12,   min: 1,    max: 100,  step: 1 },
+  stormUnlock:   { value: 18,   min: 1,    max: 100,  step: 1 },
+  cryUnlock:     { value: 25,   min: 1,    max: 100,  step: 1 },
+  goldUnlock:    { value: 30,   min: 1,    max: 100,  step: 1 },
+
+  // ---- Dungeon (무너진 성 지하묘지) ----
+  keysStart:     { value: 2,    min: 0,    max: 10,   step: 1 },
+  keysMax:       { value: 3,    min: 1,    max: 10,   step: 1 },
+  keyRegen:      { value: 240,  min: 30,   max: 3600, step: 30 },    // seconds of play per new key
+  dungeonTime:   { value: 40,   min: 10,   max: 120,  step: 5 },
+  dungeonStage:  { value: 4,    min: 1,    max: 50,   step: 1 },     // floor 1 hp = this stage's hp ...
+  dungeonFloorStep:{ value: 5,  min: 1,    max: 20,   step: 1 },     // ... plus this many stages per floor
+  dungeonHpMult: { value: 4,    min: 1,    max: 30,   step: 0.5 },
+  dungeonStones: { value: 10,   min: 1,    max: 100,  step: 1 },     // per boss, x floor
+  dungeonScrolls:{ value: 1,    min: 0,    max: 10,   step: 1 },     // per boss, + floor / 2
+
+  // ---- Promotion (기사단 서열) ----
+  rankBonus:     { value: 1.5,  min: 1.1,  max: 3,    step: 0.05 },  // x all damage per rank
+  rankReqStep:   { value: 10,   min: 5,    max: 30,   step: 5 },     // rank n needs best stage n x this
+  trialHpMult:   { value: 8,    min: 1,    max: 40,   step: 0.5 },
+  trialTime:     { value: 25,   min: 5,    max: 90,   step: 1 },
+
+  // ---- Companion evolution (stars) ----
+  bossSouls:     { value: 2,    min: 0,    max: 20,   step: 1 },     // soul stones per stage boss (+1 per later boss)
+  evoSouls:      { value: 3,    min: 1,    max: 50,   step: 1 },     // souls for star n = this x n
+  evoLevel:      { value: 20,   min: 1,    max: 200,  step: 1 },     // hero level for star n = this x 2^(n-1)
+  starMult:      { value: 1.6,  min: 1.1,  max: 4,    step: 0.1 },   // x that hero's damage per star
+
+  // ---- Gear enhance and merge ----
+  enhPct:        { value: 0.12, min: 0.01, max: 0.5,  step: 0.01 },  // +item effect per enhance level
+  enhCost:       { value: 8,    min: 1,    max: 100,  step: 1 },     // stones for +1; grows ^enhPow
+  enhPow:        { value: 1.3,  min: 1,    max: 3,    step: 0.1 },
+  enhMax:        { value: 15,   min: 1,    max: 50,   step: 1 },
+  mergeNeed:     { value: 3,    min: 2,    max: 10,   step: 1 },     // stored items of one rarity to merge up
+
+  // ---- Spirits (정령) ----
+  fireBase:      { value: 0.3,  min: 0,    max: 3,    step: 0.05 },  // +party damage
+  fireLv:        { value: 0.1,  min: 0,    max: 1,    step: 0.01 },
+  frostBase:     { value: 5,    min: 0,    max: 30,   step: 1 },     // +seconds on boss, trial and dungeon timers
+  frostLv:       { value: 1,    min: 0,    max: 10,   step: 0.5 },
+  lightBase:     { value: 0.4,  min: 0,    max: 3,    step: 0.05 },  // +gold
+  lightLv:       { value: 0.15, min: 0,    max: 1,    step: 0.01 },
+  spiritCost:    { value: 15,   min: 1,    max: 200,  step: 1 },     // stones for level 2; grows ^spiritPow
+  spiritPow:     { value: 1.4,  min: 1,    max: 3,    step: 0.1 },
+
+  // ---- Zones: the road from the meadow to the demon castle (first stage of each zone) ----
+  zoneForest:    { value: 7,    min: 2,    max: 200,  step: 1 },
+  zoneVillage:   { value: 13,   min: 3,    max: 200,  step: 1 },
+  zoneWaste:     { value: 19,   min: 4,    max: 200,  step: 1 },
+  zoneCastle:    { value: 25,   min: 5,    max: 200,  step: 1 },
+
+  // ---- Coming back: the idle chest, daily orders, attendance, achievements ----
+  chestStones:   { value: 12,   min: 0,    max: 200,  step: 1 },     // per hour away, x crypt floor
+  chestScrolls:  { value: 2,    min: 0,    max: 20,   step: 0.5 },   // per hour away
+  chestSouls:    { value: 1,    min: 0,    max: 20,   step: 0.5 },   // per hour away
+  dailyKills:    { value: 200,  min: 10,   max: 5000, step: 10 },
+  dailyTaps:     { value: 150,  min: 10,   max: 5000, step: 10 },
+  dailyUps:      { value: 25,   min: 1,    max: 500,  step: 1 },
+  dailyCasts:    { value: 30,   min: 1,    max: 500,  step: 1 },
+  dailyDungeons: { value: 1,    min: 1,    max: 10,   step: 1 },
+  rewardScale:   { value: 1,    min: 0.1,  max: 10,   step: 0.1 },   // x every daily, attendance and achievement reward
 };
