@@ -110,5 +110,10 @@
   "dailyUps": 25,
   "dailyCasts": 30,
   "dailyDungeons": 1,
-  "rewardScale": 1
+  "rewardScale": 1,
+  "walkScroll": 35,
+  "marchScroll": 140,
+  "attackAnimTime": 0.45,
+  "walkFps": 10,
+  "enemyAttackEvery": 1.6
 }

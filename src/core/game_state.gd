@@ -866,7 +866,7 @@ func step(dt: float, hero_x: Callable, enemy_x: float) -> void:
 	var e = state.enemy
 	if e == null:
 		state.march -= dt
-		state.scroll += dt * 140.0
+		state.scroll += dt * tune("marchScroll")
 		if state.march <= 0: spawn_enemy(false)
 	elif e.dead > 0:
 		e.dead += dt
@@ -877,6 +877,8 @@ func step(dt: float, hero_x: Callable, enemy_x: float) -> void:
 		if e.x > 0:
 			e.x = maxf(0.0, e.x - dt / tune("enemyWalkIn"))
 			state.scroll += dt * 60.0
+		else:
+			state.scroll += dt * tune("walkScroll") # the party keeps walking while it fights
 		if e.flash > 0: e.flash -= dt
 		if e.boss: e.lunge = fmod(e.lunge + dt, 2.2)
 		if e.boss and state.mode == "stage":
@@ -903,20 +905,20 @@ func step(dt: float, hero_x: Callable, enemy_x: float) -> void:
 		var x0: float = hero_x.call(h.id)
 		match h.id:
 			"knight":
-				state.anim.knight = 0.18
+				state.anim.knight = tune("attackAnimTime")
 				damage(hit, false, C_INK, enemy_x)
 				sfx("swing")
 			"archer":
-				state.anim.archer = 0.12
+				state.anim.archer = tune("attackAnimTime")
 				state.shots.append({"kind": "arrow", "x0": x0 + 12, "y0": -34.0, "x1": enemy_x, "y1": -30.0, "arc": 14.0, "t": 0.0, "dur": 0.25, "dmg": hit, "color": C_GOOD})
 				sfx("arrow")
 			"cleric":
-				state.anim.cleric = 0.4
+				state.anim.cleric = tune("attackAnimTime")
 				state.sparks.append({"x": enemy_x, "y": 0.0, "vx": 0.0, "vy": 0.0, "t": 0.0, "pillar": true})
 				damage(hit, false, C_HOLY, enemy_x)
 				sfx("holy")
 			"pyro":
-				state.anim.pyro = 0.3
+				state.anim.pyro = tune("attackAnimTime")
 				state.shots.append({"kind": "fire", "x0": x0 + 16, "y0": -36.0, "x1": enemy_x, "y1": -28.0, "arc": 40.0, "t": 0.0, "dur": 0.45, "dmg": hit, "color": C_EMBER})
 				sfx("fire")
 	for s in state.shots:
@@ -955,6 +957,6 @@ func tap_attack(enemy_x: float, auto: bool = false) -> void:
 	var dmg := tap_damage()
 	var crit := rng.randf() < 0.08
 	damage(dmg * 3.0 if crit else dmg, crit, C_TORCH_HI if crit else C_INK, enemy_x)
-	state.anim.knight = 0.18
+	state.anim.knight = tune("attackAnimTime")
 	state.sparks.append({"x": enemy_x, "y": -30.0, "vx": 0.0, "vy": 0.0, "t": 0.0, "slash": true})
 	sfx("crit" if crit else "tap")

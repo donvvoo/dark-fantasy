@@ -562,11 +562,9 @@ func _draw_field() -> void:
 	order.reverse()
 	for id in order:
 		var an: float = s.anim[id]
-		var lunge: float = sin(minf(1.0, an / 0.18) * PI) * 14.0 if id == "knight" else (-an * 10.0 if id == "archer" else 0.0)
-		var bob: int = roundi(sin(t * 4 + id.length()) * 1.5 + (absf(sin(t * 14)) * -3.0 if s.march > 0 else 0.0))
-		var x := hero_x(id) + lunge
-		var y := gy + bob
-		px.sprite(id, x, y)
+		var x := hero_x(id)
+		var y := gy
+		px.sprite(id, x, y, _motion(id, an, t))
 		var st := int(s.stars[id])
 		if st > 0: stars(roundf(x - st * 3), y - 72, st)
 		if id == "cleric" and an > 0: px.rect(hero_x(id) - 14, gy - 76, 28, 3, Color(PAL.holy, an / 0.4 * 0.6))
@@ -579,8 +577,9 @@ func _draw_field() -> void:
 		var ex := enemy_x()
 		var fly: float = -26.0 + sin(t * 6) * 5.0 if e.kind.get("fly", false) else 0.0
 		var alpha: float = maxf(0.0, 1.0 - e.dead / 0.4) if e.dead > 0 else 1.0
-		var lunge: float = -sin(minf(1.0, e.lunge / 0.3) * PI) * 18.0 if e.boss else 0.0
-		px.sprite(e.kind.id, ex + lunge, gy + fly + (e.dead * 30.0 if e.dead > 0 else 0.0), {"flash": e.flash > 0, "modulate": Color(1, 1, 1, alpha), "rot": e.dead * 1.2 if e.dead > 0 else 0.0})
+		var opts := {"flash": e.flash > 0, "modulate": Color(1, 1, 1, alpha), "rot": e.dead * 1.2 if e.dead > 0 else 0.0}
+		if e.dead == 0: opts.merge(_enemy_motion(e, t))
+		px.sprite(e.kind.id, ex, gy + fly + (e.dead * 30.0 if e.dead > 0 else 0.0), opts)
 		if s.buffs.burn > 0 and e.dead == 0 and int(t * 10) % 2 == 0: flame(ex + (fmod(t * 37.0, 1.0) - 0.5) * 30, gy - 30 - fmod(t * 53.0, 1.0) * 30)
 		if e.dead == 0 and e.x < 0.05:
 			var bw := 120.0 if e.boss else 70.0
@@ -629,6 +628,34 @@ func _draw_field() -> void:
 		wood_frame(40, 120, W - 80, h)
 		ribbon(W / 2, 112, minf(220, px.text_width(pop.title, 11) + 40), pop.title)
 		for i in lines.size(): px.text(lines[i], W / 2, 144 + i * 16, 11, PAL.muted if i > 0 else pop.color)
+
+## Which frame a hero shows: its attack while one plays, otherwise a looping walk.
+func _motion(id: String, attack_left: float, t: float) -> Dictionary:
+	var dur := Game.tune("attackAnimTime")
+	if attack_left > 0:
+		var n := px.frame_count(id, "attack")
+		if n > 0: return {"anim": "attack", "frame": int((1.0 - attack_left / dur) * n)}
+	var w := px.frame_count(id, "walk")
+	if w > 1: return {"anim": "walk", "frame": 1 + int(t * Game.tune("walkFps") + id.length()) % (w - 1)}
+	return {}
+
+## Enemies walk toward the party and strike on a steady beat (the blow is for show; heroes take no damage).
+var _enemy_ref = null
+var _enemy_clock := 0.0
+func _enemy_motion(e: Dictionary, t: float) -> Dictionary:
+	if not is_same(e, _enemy_ref):
+		_enemy_ref = e
+		_enemy_clock = t
+	var every := Game.tune("enemyAttackEvery") * (1.4 if e.boss else 1.0)
+	var since := fmod(t - _enemy_clock, every)
+	var dur := Game.tune("attackAnimTime") * (1.4 if e.boss else 1.0)
+	var id: String = e.kind.id
+	if e.x <= 0.05 and since > every - dur:
+		var n := px.frame_count(id, "attack")
+		if n > 0: return {"anim": "attack", "frame": int((since - (every - dur)) / dur * n)}
+	var w := px.frame_count(id, "walk")
+	if w > 1: return {"anim": "walk", "frame": 1 + int(t * Game.tune("walkFps")) % (w - 1)}
+	return {}
 
 func _draw_fx(f: Dictionary, gy: float) -> void:
 	var ex := enemy_x()

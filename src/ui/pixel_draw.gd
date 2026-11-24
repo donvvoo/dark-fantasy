@@ -34,10 +34,10 @@ func _pixel_font(path: String) -> FontFile:
 ## A sprite or UI texture by name, cached; measures its feet and face on first use.
 func texture(name: String) -> Texture2D:
 	if tex.has(name): return tex[name]
-	var path := (UI_DIR if name.begins_with("ui_") else SPRITE_DIR) + name + ".png"
+	var path := (UI_DIR if name.begins_with("ui_") else SPRITE_DIR + ("anim/" if ("_walk_" in name or "_attack_" in name) else "")) + name + ".png"
 	var t: Texture2D = load(path) if ResourceLoader.exists(path) else null
 	tex[name] = t
-	if t != null and not name.begins_with("ui_"): _measure(name, t)
+	if t != null and not name.begins_with("ui_") and not ("_walk_" in name or "_attack_" in name): _measure(name, t)
 	return t
 
 func _measure(name: String, t: Texture2D) -> void:
@@ -99,9 +99,25 @@ func text_outlined(s: String, x: float, y: float, size: float, c: Color, align: 
 		text(s, x + d.x, y + d.y, size, dark, align)
 	text(s, x, y, size, c, align)
 
+## Number of frames in an animation (0 if there is none): assets/sprites/anim/<name>_<anim>_<i>.png
+var _frame_counts := {}
+func frame_count(name: String, anim: String) -> int:
+	var key := name + "_" + anim
+	if _frame_counts.has(key): return _frame_counts[key]
+	var n := 0
+	while ResourceLoader.exists(SPRITE_DIR + "anim/%s_%d.png" % [key, n]): n += 1
+	_frame_counts[key] = n
+	return n
+
 ## Draws a sprite with its centre at x and feet on y. Sprites 48 px and wider draw 1:1, smaller ones 2:1.
+## opts.anim + opts.frame draw an animation frame instead (feet measured on the base sprite).
 func sprite(name: String, x: float, y: float, opts: Dictionary = {}) -> void:
-	var t := texture(name)
+	texture(name) # measures the base sprite's feet
+	var t: Texture2D = null
+	if opts.has("anim"):
+		var n := frame_count(name, opts.anim)
+		if n > 0: t = texture("%s_%s_%d" % [name, opts.anim, clampi(int(opts.get("frame", 0)), 0, n - 1)])
+	if t == null: t = texture(name)
 	if t == null: return
 	var sc: float = (1.0 if t.get_width() >= 48 else 2.0) * opts.get("scale", 1.0)
 	var w := t.get_width() * sc

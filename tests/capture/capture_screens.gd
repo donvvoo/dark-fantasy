@@ -35,6 +35,13 @@ func _run() -> void:
 	game.buy_hero(1); game.buy_hero(2)
 	await _wait(60)
 	await _shot("play")
+	if "anim" in OS.get_cmdline_user_args():
+		game.state.lv.pyro = 1
+		for i in 10:
+			await _wait(4)
+			await _shot("anim-%d" % i)
+		quit()
+		return
 	for tab in ([] if OS.get_cmdline_user_args().size() > 1 else ["skill", "gear", "adv", "quest", "rebirth"]):
 		game.state.tab = tab
 		await _shot(tab)
