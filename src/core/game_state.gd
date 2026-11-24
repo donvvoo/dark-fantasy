@@ -31,10 +31,10 @@ const C_TRIM_HI := Color("ffe08a")
 const C_GOOD := Color("8ee27a")
 
 const HEROES := [
-	{"id": "knight", "name": "에드릭", "role": "근접 · 탭", "cost": "knightCost", "dps": "knightDps", "every": "knightInterval"},
-	{"id": "archer", "name": "리안", "role": "궁수 · 연사", "cost": "archerCost", "dps": "archerDps", "every": "archerInterval"},
-	{"id": "cleric", "name": "세라", "role": "성직자 · 아군 강화", "cost": "clericCost", "dps": "clericDps", "every": "clericInterval"},
-	{"id": "pyro", "name": "모르간", "role": "화염술사 · 폭발", "cost": "pyroCost", "dps": "pyroDps", "every": "pyroInterval"},
+	{"id": "knight", "name": "카인", "role": "검사 · 탭", "cost": "knightCost", "dps": "knightDps", "every": "knightInterval"},
+	{"id": "archer", "name": "리라", "role": "사냥꾼 · 연사", "cost": "archerCost", "dps": "archerDps", "every": "archerInterval"},
+	{"id": "cleric", "name": "엘린", "role": "사제 · 아군 강화", "cost": "clericCost", "dps": "clericDps", "every": "clericInterval"},
+	{"id": "pyro", "name": "노아", "role": "마법사 · 폭발", "cost": "pyroCost", "dps": "pyroDps", "every": "pyroInterval"},
 ]
 const ENEMIES := [
 	{"id": "skeleton", "name": "해골 전사", "fly": false}, {"id": "ghoul", "name": "굶주린 구울", "fly": false},

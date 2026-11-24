@@ -7,6 +7,8 @@ class_name PixelDraw
 extends RefCounted
 
 const SPRITE_DIR := "res://assets/sprites/"
+## The party is built from the modular character pack (32x48 bodies on 48x64 canvases): always drawn 2x.
+const PARTY_2X := ["knight", "archer", "cleric", "pyro"]
 const UI_DIR := "res://assets/ui/"
 ## Nine-slice borders in source pixels (x, y) for each PixelLab UI part.
 const SLICE := {"ui_panel": Vector2i(14, 14), "ui_card": Vector2i(6, 6), "ui_btn": Vector2i(7, 6), "ui_btn_hot": Vector2i(7, 6),
@@ -119,7 +121,7 @@ func sprite(name: String, x: float, y: float, opts: Dictionary = {}) -> void:
 		if n > 0: t = texture("%s_%s_%d" % [name, opts.anim, clampi(int(opts.get("frame", 0)), 0, n - 1)])
 	if t == null: t = texture(name)
 	if t == null: return
-	var sc: float = (1.0 if t.get_width() >= 48 else 2.0) * opts.get("scale", 1.0)
+	var sc: float = (2.0 if (name in PARTY_2X or t.get_width() < 48) else 1.0) * opts.get("scale", 1.0)
 	var w := t.get_width() * sc
 	var h := t.get_height() * sc
 	var foot: float = meta.get(name, {}).get("foot", 0) * sc
@@ -139,6 +141,10 @@ func icon_tex(name: String, x: float, y: float, dark: bool = false) -> void:
 
 ## The head of a sprite at 2x in a 40x40 window (party portraits).
 func portrait(name: String, x: float, y: float, dark: bool) -> void:
+	var face_tex := texture(name + "_face")
+	if face_tex != null: # a face cut out by the character maker
+		ci.draw_texture_rect(face_tex, Rect2(x, y, 40, 40), false, Color(0.25, 0.25, 0.25) if dark else Color.WHITE)
+		return
 	var t := texture(name)
 	if t == null: return
 	var face: Rect2 = meta.get(name, {}).get("face", Rect2(6, 1, 20, 20))
