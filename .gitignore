@@ -182,3 +182,6 @@ android/build/
 # Signing keys never go in the repo
 *.keystore
 *.jks
+# Our export presets hold no secrets (keystore fields stay empty; keys come from
+# GODOT_ANDROID_KEYSTORE_* environment variables), so they are tracked.
+!export_presets.cfg
