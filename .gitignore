@@ -173,3 +173,12 @@ $RECYCLE.BIN/
 # the project root. Anchored so a reports/ folder elsewhere stays tracked.
 /reports/
 /test-results/
+
+# === Godot ===
+.godot/
+build/
+# Android Gradle template: reinstall from the 4.7.2 export templates (android_source.zip)
+android/build/
+# Signing keys never go in the repo
+*.keystore
+*.jks

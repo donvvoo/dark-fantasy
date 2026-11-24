@@ -25,3 +25,40 @@ framework:
 # here. `/project-settings --local <key>=<value>` writes there; `/project-settings <key>=<value>`
 # edits this file. See `.claude/docs/config-resolution.md` for the full
 # precedence order.
+
+engine:
+  name: "Godot"
+  version: "4.7.2"
+  language: "GDScript"
+  rendering: "Compatibility"   # chosen over the 2D non-web default (Forward+): broadest Android device support
+  physics: "Godot Physics 2D"
+
+specialists:
+  code: "godot-gdscript-specialist"
+  shader: "godot-shader-specialist"
+  ui: "godot-specialist"
+  additional: ["godot-gdextension-specialist"]
+
+naming:
+  classes: PascalCase
+  variables: snake_case
+  constants: SCREAMING_SNAKE
+  signals: past_tense
+  files: snake_case
+  scenes: snake_case
+
+commands:
+  # TODO: confirm these once the Godot binary and Android export templates are installed
+  build: "godot --headless --path . --export-release 'Android' build/android/ashen-vanguard.aab"
+  test: "godot --headless -s -d --remote-debug tcp://127.0.0.1:0 res://addons/gdUnit4/bin/GdUnitCmdTool.gd -a res://tests --ignoreHeadlessMode"
+  run: "godot --path . --windowed --resolution 360x640"
+  smoke: "godot --headless --quit-after 5"
+
+platform:
+  targets: ["Android"]
+  store: "Google Play"
+  android_target_sdk: 36
+  android_min_sdk: 24
+  architectures: ["arm64-v8a"]
+  package_format: "aab"
+  package_name: "com.raiseabyss.game"
