@@ -1,10 +1,10 @@
-# 잿빛 선봉대 개인정보처리방침 / Privacy Policy
+# 어비스 키우기 개인정보처리방침 / Privacy Policy
 
 시행일 / Effective date: 2026-11-23
 
 ## 한국어
 
-**잿빛 선봉대**(이하 "게임")는 이용자의 개인정보를 수집하지 않습니다.
+**어비스 키우기**(이하 "게임")는 이용자의 개인정보를 수집하지 않습니다.
 
 1. **수집하는 정보:** 없습니다. 게임은 이름, 이메일, 위치, 연락처, 기기 식별자 등 어떤 개인정보도 수집하지 않습니다.
 2. **기기에 저장되는 정보:** 게임 진행 상황(스테이지, 레벨, 재화, 설정)은 이용자의 기기 안에만 저장됩니다. 이 정보는 외부로 전송되지 않으며, 앱을 삭제하면 함께 삭제됩니다.
@@ -15,7 +15,7 @@
 
 ## English
 
-**Ashen Vanguard** ("the Game") does not collect personal information.
+**Raise Abyss** ("the Game") does not collect personal information.
 
 1. **Information collected:** None. The Game does not collect names, email addresses, location, contacts, device identifiers or any other personal data.
 2. **Information stored on the device:** Game progress (stage, levels, currencies, settings) is stored only on the player's device. It is never transmitted and is removed when the app is uninstalled.

@@ -1,4 +1,4 @@
-## The one scene of 잿빛 선봉대: draws the road, the party and the panels at
+## The one scene of 어비스 키우기 (Raise Abyss): draws the road, the party and the panels at
 ## 360x640 real pixels, turns taps and keys into requests to `Game`, plays the
 ## sounds `Game` asks for, and saves on Android pause, back and close.
 ## Rules live in src/core/game_state.gd; this script only reads them.
@@ -424,23 +424,110 @@ func bar(x: float, y: float, w: float, h: float, p: float, c: Color, back: Color
 
 # ---- The title --------------------------------------------------------------------------------
 
+## The title: the mouth of the abyss in a dungeon wall. Stone bricks, a gate with the
+## abyss glowing inside, stairs going down, wall torches, hanging chains, the hero at the edge.
 func _draw_title() -> void:
 	var t := Time.get_ticks_msec() / 1000.0
-	draw_rect(Rect2(0, 0, W, H), Color("07070a"))
-	var gr := 200 + roundi(sin(t * 9) * 4)
-	for st in [[1.0, 0.05], [0.75, 0.07], [0.5, 0.09], [0.28, 0.12]]:
-		px.disc(W / 2, 330, roundi(gr * st[0]), Color(1, 0.55, 0.24, st[1]))
-	px.rect(0, 360, W, 4, Color("2a2420"))
-	px.sprite("knight", W / 2 - 30, 362, {"scale": 2.0})
-	px.sprite("spirit_fire", W / 2 + 56, 310 + roundi(sin(t * 3) * 4))
-	wood_frame(40, 70, W - 80, 96)
-	px.text_outlined("잿빛 선봉대", W / 2, 108, 40, PAL.torch_hi)
-	ribbon(W / 2, 140, 160, "ASHEN VANGUARD")
-	px.text("화면을 탭해서 베고, 아래 버튼으로 성장시키세요", W / 2, 400, 11, PAL.muted, "center", false)
-	px.text("켜 두지 않아도 선봉대는 계속 싸웁니다", W / 2, 420, 11, PAL.muted, "center", false)
+	draw_rect(Rect2(0, 0, W, H), Color("0a080c"))
+	# stone brick wall, row by row, shades from a fixed hash
+	for row in range(0, 40):
+		var y := row * 16
+		var off := 0 if row % 2 == 0 else 14
+		for col in range(-1, 14):
+			var x := col * 28 + off
+			var n := Backdrop.noise01(row * 31.0 + col * 7.0)
+			var shade := Color("1c1820").lerp(Color("2a2430"), n)
+			px.rect(x + 1, y + 1, 26, 14, shade)
+			px.rect(x + 1, y + 1, 26, 1, shade.lightened(0.12))
+			if n > 0.82: px.rect(x + 6 + int(n * 10), y + 5, 6, 1, Color("120e14"))
+	# darkness falls off toward the edges
+	for i in 6:
+		var a := 0.12 * (i + 1)
+		px.rect(0, 0, 10 + i * 8, H, Color(0, 0, 0, a * 0.5))
+		px.rect(W - 10 - i * 8, 0, 10 + i * 8, H, Color(0, 0, 0, a * 0.5))
+	# the gate: a stepped stone arch around the abyss
+	var gx := W / 2.0
+	var top := 250.0
+	var gw := 150.0
+	var floor_y := 470.0
+	for k in 3:
+		var pad := 14.0 - k * 5.0
+		var c: Color = [Color("3a3440"), Color("2c2832"), Color("0d0a10")][k]
+		px.rect(gx - gw / 2 - pad, top + 40, gw + pad * 2, floor_y - top - 40, c)
+		var r := int(gw / 2 + pad)
+		px.disc(gx, top + 40, r, c)
+	px.rect(gx - gw / 2 + 4, top + 40, gw - 8, floor_y - top - 40, Color("050308"))
+	px.disc(gx, top + 40, int(gw / 2) - 4, Color("050308"))
+	# the abyss inside: pulsing purple and ember rings sinking down
+	var pulse := 1.0 + sin(t * 2.0) * 0.06
+	for st in [[64, Color(0.35, 0.08, 0.45, 0.35)], [48, Color(0.55, 0.12, 0.4, 0.35)], [32, Color(0.85, 0.25, 0.2, 0.35)], [18, Color(1, 0.55, 0.25, 0.45)]]:
+		px.disc(gx, 400, roundi(st[0] * pulse), st[1])
+	for i in 5: # rings falling into the dark
+		var p := fmod(t * 0.25 + i * 0.2, 1.0)
+		var r := roundi(70.0 * (1.0 - p))
+		var c := Color(0.9, 0.35, 0.6, 0.25 * p)
+		var ang := 0.0
+		while ang < TAU:
+			px.rect(gx + cos(ang) * r, 400 + sin(ang) * r * 0.45, 2, 2, c)
+			ang += 0.2
+	# keystone and arch runes
+	px.rect(gx - 9, top - 30, 18, 22, Color("4a4250")); px.rect(gx - 5, top - 24, 10, 10, Color(1, 0.35, 0.25, 0.6 + sin(t * 3) * 0.3))
+	for i in 7:
+		var ang := PI + PI * (i + 0.5) / 7.0
+		px.rect(gx + cos(ang) * (gw / 2 + 6) - 1, top + 40 + sin(ang) * (gw / 2 + 6) - 1, 3, 3, Color(0.8, 0.3, 0.9, 0.35 + 0.35 * sin(t * 2 + i)))
+	# stairs going down into the abyss
+	for i in 6:
+		var y := floor_y - 8 - i * 9
+		var w := 130.0 - i * 16.0
+		px.rect(gx - w / 2, y, w, 9, Color("2e2834").darkened(i * 0.12))
+		px.rect(gx - w / 2, y, w, 1, Color("4a4250").darkened(i * 0.12))
+	px.rect(0, floor_y, W, H - floor_y, Color("15111a"))
+	px.rect(0, floor_y, W, 2, Color("3a3440"))
+	# skulls and bones by the stairs
+	var skull := [".kkk.", "kwwwk", "kbwbk", ".kwk.", ".k.k."]
+	px.bitmap(skull, gx - 92, floor_y - 6, {"k": Color("0b0705"), "w": Color("d8d0c0"), "b": Color("0b0705")}, 2)
+	px.bitmap(skull, gx + 80, floor_y - 6, {"k": Color("0b0705"), "w": Color("c8c0b0"), "b": Color("0b0705")}, 2)
+	px.rect(gx - 70, floor_y - 2, 14, 2, Color("c8c0b0")); px.rect(gx + 62, floor_y - 3, 12, 2, Color("c8c0b0"))
+	# wall torches with flickering light
+	for side in [-1, 1]:
+		var tx: float = gx + side * 128.0
+		var ty := 330.0
+		var fl := sin(t * 11 + side) * 0.05 + sin(t * 6.7) * 0.04
+		for st in [[90, 0.05], [60, 0.06], [34, 0.08]]:
+			px.disc(tx, ty - 10, roundi(st[0] * (1.0 + fl)), Color(1, 0.5, 0.2, st[1]))
+		px.rect(tx - 2, ty - 4, 4, 22, Color("3a2a1a")); px.rect(tx - 5, ty + 2, 10, 3, Color("5a4030"))
+		flame(tx, ty - 8 - roundi(absf(sin(t * 9 + side)) * 2), 2)
+	# hanging chains
+	for cx in [44, 316]:
+		for i in 12:
+			var y := i * 9 + roundi(sin(t * 1.3 + cx) * 1.5)
+			px.rect(cx - 2 + (i % 2) * 1, y, 4 if i % 2 == 0 else 2, 7, Color("4a4650"))
+			px.rect(cx - 1, y + 1, 2, 5, Color("0a080c") if i % 2 == 0 else Color("6a6670"))
+	# the hero at the edge of the abyss, and the fire spirit
+	px.sprite("knight", gx - 50, floor_y + 2, {"scale": 2.0})
+	px.sprite("spirit_fire", gx + 18, 360 + roundi(sin(t * 3) * 4))
+	# rising embers and ash from the abyss
+	for i in 30:
+		var p := fmod(t * (10 + Backdrop.noise01(i) * 16) + Backdrop.noise01(i + 40) * 300, 300)
+		var x := gx - 60 + Backdrop.noise01(i + 9) * 120 + sin(t + i) * 10
+		px.rect(x, 420 - p, 2, 2, Color(1, 0.45, 0.2, 0.7) if i % 3 else Color(0.8, 0.4, 1, 0.6))
+	# the title carved into a stone plaque
+	var py := 70.0
+	px.rect(28, py, W - 56, 104, Color("0b0705"))
+	px.rect(30, py + 2, W - 60, 100, Color("3a3440"))
+	px.rect(34, py + 6, W - 68, 92, Color("26222c"))
+	px.rect(30, py + 2, W - 60, 2, Color("5a5260"))
+	for c in [Vector2(34, py + 6), Vector2(W - 40, py + 6), Vector2(34, py + 92), Vector2(W - 40, py + 92)]: px.rect(c.x, c.y, 6, 6, Color("5a5260"))
+	px.line(60, py + 8, 74, py + 30, 1, Color("16121a")); px.line(290, py + 70, 304, py + 96, 1, Color("16121a"))
+	var glow := 0.25 + sin(t * 2.5) * 0.1
+	px.text("어비스 키우기", W / 2 + 2, 112, 40, Color(0.9, 0.2, 0.3, glow))
+	px.text_outlined("어비스 키우기", W / 2, 110, 40, Color("e8d8c8"))
+	ribbon(W / 2, 146, 160, "RAISE ABYSS")
+	# the call to start
 	var a: float = 0.6 + sin(t * 4) * 0.4
-	px.text_outlined("탭해서 이어하기" if Game.has_save() else "탭해서 시작", W / 2, 530, 18, Color(PAL.ink, a))
-	if Game.has_save(): px.text("여기를 누르면 새로 시작", W / 2, 600, 11, PAL.dim)
+	px.text_outlined("탭해서 심연으로" if not Game.has_save() else "탭해서 이어하기", W / 2, 540, 18, Color(PAL.torch_hi, a))
+	px.text("켜 두지 않아도 선봉대는 계속 싸웁니다", W / 2, 572, 11, PAL.muted, "center", false)
+	if Game.has_save(): px.text("여기를 누르면 새로 시작", W / 2, 608, 11, PAL.dim)
 
 func _draw_results() -> void:
 	_draw_play()

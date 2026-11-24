@@ -5,7 +5,7 @@ config_version=5
 
 [application]
 
-config/name="잿빛 선봉대"
+config/name="어비스 키우기"
 config/description="세로형 다크 판타지 방치 RPG"
 run/main_scene="res://src/main.tscn"
 config/features=PackedStringArray("4.7", "GL Compatibility")
