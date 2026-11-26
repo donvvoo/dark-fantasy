@@ -154,3 +154,60 @@ def sparkle(size, cx, cy, level):
             for dx, dy in ((1, 0), (-1, 0), (0, 1), (0, -1)):
                 put(cx + tx + dx, cy + ty + dy, SPARK_MID)
     return layer
+
+
+def keep_largest(img):
+    """Drops small detached blobs (stray generated arrows, specks): keeps the biggest connected shape."""
+    w, h = img.size
+    p = img.load()
+    seen, best = set(), []
+    for y in range(h):
+        for x in range(w):
+            if p[x, y][3] and (x, y) not in seen:
+                comp, stack = [], [(x, y)]
+                seen.add((x, y))
+                while stack:
+                    cx, cy = stack.pop()
+                    comp.append((cx, cy))
+                    for dx in (-1, 0, 1):
+                        for dy in (-1, 0, 1):
+                            nx, ny = cx + dx, cy + dy
+                            if 0 <= nx < w and 0 <= ny < h and (nx, ny) not in seen and p[nx, ny][3]:
+                                seen.add((nx, ny))
+                                stack.append((nx, ny))
+                if len(comp) > len(best):
+                    best = comp
+    out = Image.new("RGBA", img.size, (0, 0, 0, 0))
+    o = out.load()
+    for x, y in best:
+        o[x, y] = p[x, y]
+    return out
+
+
+def arrow(size, tip_x, y, length=14, streak=0):
+    """A flying arrow pointing right with its tip at (tip_x, y): steel head, wooden shaft,
+    green fletching; streak > 0 adds that many speed lines behind it."""
+    layer = Image.new("RGBA", size, (0, 0, 0, 0))
+    p = layer.load()
+
+    def put(x, yy, c):
+        if 0 <= x < size[0] and 0 <= yy < size[1]:
+            p[x, yy] = c
+    OUT, STEEL, STEEL_L = (20, 20, 40, 255), (150, 160, 180, 255), (235, 240, 250, 255)
+    WOOD, FL, FL_D = (160, 110, 70, 255), (120, 220, 150, 255), (40, 140, 90, 255)
+    for x in range(tip_x - length, tip_x - 2):          # shaft with a dark line under it
+        put(x, y, WOOD)
+        put(x, y + 1, OUT)
+    put(tip_x, y, STEEL_L); put(tip_x - 1, y, STEEL); put(tip_x - 2, y, STEEL)   # head
+    put(tip_x - 1, y - 1, STEEL); put(tip_x - 1, y + 1, STEEL); put(tip_x + 1, y, OUT)
+    put(tip_x - 2, y - 1, OUT); put(tip_x - 2, y + 1, OUT)
+    fx = tip_x - length                                   # fletching
+    for i, c in enumerate((FL, FL, FL_D)):
+        put(fx + i, y - 1, c); put(fx + i, y - 2 if i < 2 else y - 1, c)
+        put(fx + i, y + 1, c); put(fx + i, y + 2 if i < 2 else y + 1, c)
+    for k in range(streak):                               # speed lines behind
+        yy = y + (-3, 3, 0)[k % 3]
+        x1 = fx - 2 - (k % 2) * 3
+        for x in range(x1 - 8 + k, x1):
+            put(x, yy, (232, 244, 255, 255))
+    return layer
