@@ -103,3 +103,54 @@ def dust(size, x, y, spread=1.0):
                 if xx * xx / 1.6 + yy * yy <= r * r + 0.5 and 0 <= cx + xx < size[0] and 0 <= cy + yy < size[1]:
                     p[cx + xx, cy + yy] = shade if yy == r else light
     return layer
+
+
+SPARK_CORE = (255, 255, 255, 255)
+SPARK_LIGHT = (240, 226, 255, 255)
+SPARK_MID = (206, 168, 255, 255)
+SPARK_DEEP = (160, 110, 236, 255)
+
+
+def sparkle(size, cx, cy, level):
+    """A crisp pixel sparkle on a staff crystal. level 0-3: 0 a glint, 1 a small star,
+    2 a big four-point star, 3 the big star with a dotted glow ring and twinkles around it."""
+    layer = Image.new("RGBA", size, (0, 0, 0, 0))
+    p = layer.load()
+
+    def put(x, y, c):
+        if 0 <= x < size[0] and 0 <= y < size[1]:
+            p[x, y] = c
+
+    if level >= 1:                            # soft glow disc behind the star
+        gr = [0, 3, 5, 7][level]
+        for y in range(-gr, gr + 1):
+            for x in range(-gr, gr + 1):
+                d2 = x * x + y * y
+                if d2 <= gr * gr:
+                    put(cx + x, cy + y, SPARK_LIGHT if d2 <= (gr * 0.5) ** 2 else SPARK_MID if d2 <= (gr * 0.8) ** 2 else SPARK_DEEP)
+    arm = [3, 7, 12, 15][level]
+    for d in range(-arm, arm + 1):           # the four points, white at the centre fading out
+        f = abs(d) / max(arm, 1)
+        c = SPARK_CORE if f < 0.3 else SPARK_LIGHT if f < 0.6 else SPARK_MID if f < 0.85 else SPARK_DEEP
+        put(cx + d, cy, c)
+        put(cx, cy + d, c)
+    if level >= 1:                            # short diagonals
+        for d in range(1, [0, 2, 4, 5][level] + 1):
+            c = SPARK_LIGHT if d == 1 else SPARK_MID
+            for sx, sy in ((1, 1), (1, -1), (-1, 1), (-1, -1)):
+                put(cx + sx * d, cy + sy * d, c)
+    if level >= 2:                            # a fat white core
+        for dx, dy in ((1, 0), (-1, 0), (0, 1), (0, -1)):
+            put(cx + dx, cy + dy, SPARK_CORE)
+    if level == 3:                            # dotted glow ring and twinkles
+        r = 11
+        for a in range(0, 360, 10):
+            if (a // 10) % 2 == 0:
+                x = round(cx + math.cos(math.radians(a)) * r)
+                y = round(cy + math.sin(math.radians(a)) * r)
+                put(x, y, SPARK_MID)
+        for tx, ty in ((-15, -8), (14, -12), (16, 8), (-12, 12), (2, -18)):
+            put(cx + tx, cy + ty, SPARK_CORE)
+            for dx, dy in ((1, 0), (-1, 0), (0, 1), (0, -1)):
+                put(cx + tx + dx, cy + ty + dy, SPARK_MID)
+    return layer
