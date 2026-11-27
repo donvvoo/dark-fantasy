@@ -221,7 +221,7 @@ func hero_order() -> Array:
 
 func hero_x(id: String) -> float:
 	var i := hero_order().find(id)
-	return 170.0 if i <= 0 else 168.0 - 12.0 - i * 42.0
+	return 176.0 if i <= 0 else 176.0 - 12.0 - i * 44.0
 
 func enemy_x() -> float:
 	var e = Game.state.enemy

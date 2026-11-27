@@ -32,7 +32,7 @@ const C_GOOD := Color("8ee27a")
 
 const HEROES := [
 	{"id": "knight", "name": "카인", "role": "검사 · 탭", "cost": "knightCost", "dps": "knightDps", "every": "knightInterval"},
-	{"id": "archer", "name": "리라", "role": "사냥꾼 · 연사", "cost": "archerCost", "dps": "archerDps", "every": "archerInterval"},
+	{"id": "archer", "name": "리라", "role": "엘프 궁수 · 연사", "cost": "archerCost", "dps": "archerDps", "every": "archerInterval"},
 	{"id": "cleric", "name": "엘린", "role": "사제 · 아군 강화", "cost": "clericCost", "dps": "clericDps", "every": "clericInterval"},
 	{"id": "pyro", "name": "노아", "role": "마법사 · 폭발", "cost": "pyroCost", "dps": "pyroDps", "every": "pyroInterval"},
 ]

@@ -7,8 +7,9 @@ class_name PixelDraw
 extends RefCounted
 
 const SPRITE_DIR := "res://assets/sprites/"
-## The party is built from the modular character pack (32x48 bodies on 48x64 canvases): always drawn 2x.
-const PARTY_2X := ["knight", "archer", "cleric", "pyro"]
+## Sprites always drawn 2x whatever their width. Empty now: the party (64-dot chibi characters on
+## shared per-character canvases) is drawn 1:1. Example: const PARTY_2X := ["knight"]
+const PARTY_2X: Array[String] = []
 const UI_DIR := "res://assets/ui/"
 ## Nine-slice borders in source pixels (x, y) for each PixelLab UI part.
 const SLICE := {"ui_panel": Vector2i(14, 14), "ui_card": Vector2i(6, 6), "ui_btn": Vector2i(7, 6), "ui_btn_hot": Vector2i(7, 6),

@@ -111,9 +111,15 @@ SPARK_MID = (206, 168, 255, 255)
 SPARK_DEEP = (160, 110, 236, 255)
 
 
-def sparkle(size, cx, cy, level):
+HOLY = ((255, 255, 255, 255), (255, 246, 206, 255), (255, 222, 120, 255), (230, 170, 60, 255))
+
+
+def sparkle(size, cx, cy, level, colours=None):
     """A crisp pixel sparkle on a staff crystal. level 0-3: 0 a glint, 1 a small star,
-    2 a big four-point star, 3 the big star with a dotted glow ring and twinkles around it."""
+    2 a big four-point star, 3 the big star with a dotted glow ring and twinkles around it.
+    colours: (core, light, mid, deep); violet by default, HOLY for gold."""
+    SPARK_CORE, SPARK_LIGHT, SPARK_MID, SPARK_DEEP = colours or (
+        globals()["SPARK_CORE"], globals()["SPARK_LIGHT"], globals()["SPARK_MID"], globals()["SPARK_DEEP"])
     layer = Image.new("RGBA", size, (0, 0, 0, 0))
     p = layer.load()
 
@@ -210,4 +216,30 @@ def arrow(size, tip_x, y, length=14, streak=0):
         x1 = fx - 2 - (k % 2) * 3
         for x in range(x1 - 8 + k, x1):
             put(x, yy, (232, 244, 255, 255))
+    return layer
+
+
+def beam(size, x0, y, length, colours=HOLY):
+    """A straight bolt of light to the right from (x0, y): white core, gold edges, a pointed head."""
+    layer = Image.new("RGBA", size, (0, 0, 0, 0))
+    p = layer.load()
+    core, light, mid, deep = colours
+
+    def put(x, yy, c):
+        if 0 <= x < size[0] and 0 <= yy < size[1]:
+            p[x, yy] = c
+    for i in range(length):
+        x = x0 + i
+        f = i / max(length - 1, 1)
+        half = 1 if f < 0.15 else 2 if f < 0.8 else 1
+        put(x, y, core)
+        for d in range(1, half + 1):
+            c = light if d == 1 else mid
+            put(x, y - d, c)
+            put(x, y + d, c)
+        if half == 2 and i % 3 == 0:
+            put(x, y - 3, deep)
+            put(x, y + 3, deep)
+    for d in range(3):                      # pointed head
+        put(x0 + length + d, y, core if d < 2 else light)
     return layer
